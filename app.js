@@ -5,7 +5,8 @@
 
   const API = 'https://api.open-meteo.com/v1/forecast';
   const GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search';
-  const FORECAST_DAYS = 4;
+  const FORECAST_DAYS = 3;
+  const MAX_ZOOM = 11; // 市全体を一望できる範囲まで
   const OVERLAY_PX = 180;
   const LABEL_W = 34;
   const DEFAULT_PLACE = { name: '野辺山', lat: 35.953, lon: 138.473 };
@@ -32,9 +33,9 @@
   let debounceTimer = null;
 
   // --- 地図 ---
-  const map = L.map('map', { worldCopyJump: false }).setView([DEFAULT_PLACE.lat, DEFAULT_PLACE.lon], 8);
+  const map = L.map('map', { worldCopyJump: false, maxZoom: MAX_ZOOM }).setView([DEFAULT_PLACE.lat, DEFAULT_PLACE.lon], 8);
   L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
-    minZoom: 2, maxZoom: 18, className: 'base-tiles',
+    minZoom: 2, maxZoom: MAX_ZOOM, className: 'base-tiles',
     attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>',
   }).addTo(map);
 
@@ -324,7 +325,7 @@
     if (!found.length) {
       const li = document.createElement('li');
       li.className = 'none';
-      li.textContent = '4日先までに条件を満たす時間帯はありません。';
+      li.textContent = '予報の期間内に条件を満たす時間帯はありません。';
       el.windows.replaceChildren(li);
       return;
     }
