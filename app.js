@@ -36,8 +36,14 @@
   const map = L.map('map', { worldCopyJump: false, maxZoom: MAX_ZOOM }).setView([DEFAULT_PLACE.lat, DEFAULT_PLACE.lon], 8);
   L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
     minZoom: 2, maxZoom: MAX_ZOOM, className: 'base-tiles',
-    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>',
+    // 色を反転して表示しているため、加工したことを併記する(国土地理院コンテンツ利用規約)。
+    attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>を加工して作成',
   }).addTo(map);
+
+  // 地図に重ねる雲量も Open-Meteo のデータなので、地図上にも出典とライセンスを示す(CC BY 4.0)。
+  // 補間したことや海岸線データの出所など長い文言は、パネル下部の出典欄に書く。
+  const CLOUD_ATTRIBUTION = '雲量 <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a>'
+    + '(<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>)';
 
   const pinIcon = L.divIcon({ className: 'pin', html: '<div class="arrow" hidden></div><div class="dot"></div>', iconSize: [0, 0] });
   let marker = null;
@@ -142,7 +148,7 @@
 
     if (outline) outline.remove();
     if (overlay) overlay.remove();
-    overlay = L.imageOverlay(offscreen.toDataURL(), data.grid.bounds, { className: 'cloud-layer', opacity: 1, interactive: false }).addTo(map);
+    overlay = L.imageOverlay(offscreen.toDataURL(), data.grid.bounds, { className: 'cloud-layer', opacity: 1, interactive: false, attribution: CLOUD_ATTRIBUTION }).addTo(map);
     outline = L.rectangle(data.grid.bounds, { color: '#8fc7ff', weight: 1, dashArray: '4 4', fill: false, interactive: false }).addTo(map);
 
     renderWindows();
