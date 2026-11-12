@@ -33,6 +33,13 @@ test('参照するファイルはすべて配信でコピーされる', () => {
   }
 });
 
+// robots.txt は HTML から参照されないので、上のテストでは漏れに気づけない。
+// ないと GitHub Pages がまれに 503 を返し、Facebook が共有のプレビューを取れなくなる。
+test('robots.txt があり、配信でコピーされる', () => {
+  assert.ok(fs.existsSync(path.join(root, 'robots.txt')));
+  assert.ok(copied.includes('robots.txt'), 'robots.txt が pages.yml でコピーされていない');
+});
+
 test('共有のプレビュー画像は絶対 URL で、公開サイトの配信先を指す', () => {
   const image = (html.match(/<meta property="og:image" content="([^"]+)"/) || [])[1];
   assert.equal(image, 'https://skywindow.netplan.jp/assets/og-image.png');
