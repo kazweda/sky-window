@@ -37,7 +37,8 @@ jobs:
       - name: 配信するファイルをそろえる
         run: |
           mkdir _site
-          cp index.html style.css forecast.js places.js app.js _site/
+          cp index.html style.css forecast.js places.js app.js favicon.ico manifest.webmanifest _site/
+          cp -r assets _site/
           build="${GITHUB_SHA::7}"
           sed -i "s/?v=__BUILD__/?v=${build}/g" _site/index.html
           # 置き換えが漏れていたら配信しない
