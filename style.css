@@ -18,7 +18,8 @@ body {
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 420px; height: 100dvh; }
 .map-pane { position: relative; min-height: 0; }
 #map { position: absolute; inset: 0; background: #0b1018; }
-.base-tiles { filter: invert(1) hue-rotate(180deg) brightness(.75) contrast(1.1); }
+/* 背景地図は色を反転し、道路などの色を抑える。不透明度は app.js で指定する。 */
+.base-tiles { filter: invert(1) hue-rotate(180deg) brightness(.75) contrast(1.1) saturate(.7); }
 .cloud-layer { pointer-events: none; }
 
 .search { position: absolute; top: 12px; left: 56px; right: 12px; max-width: 380px; z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap; }
