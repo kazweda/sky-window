@@ -95,3 +95,21 @@ test('緯度・経度を小数点以下4桁にし、Google マップの URL を�
   assert.equal(P.formatCoords(-33.86882, 151.20929), '-33.8688, 151.2093');
   assert.equal(P.googleMapsUrl(33.94574, 132.84996), 'https://www.google.com/maps/search/?api=1&query=33.9457,132.8500');
 });
+
+test('保存した初期位置を読み、壊れた値や範囲外の値は無視する', () => {
+  const json = P.serializeHome({ lat: 33.9457, lon: 132.85, name: '高縄山' }, 10);
+  assert.deepEqual(P.parseHome(json), { lat: 33.9457, lon: 132.85, name: '高縄山', zoom: 10 });
+  assert.deepEqual(P.parseHome(P.serializeHome({ lat: 35, lon: 138, name: null }, 8)), { lat: 35, lon: 138, name: null, zoom: 8 });
+  for (const bad of [null, '', '{', '[]', '"x"', '{"lat":"35","lon":138}', '{"lat":90,"lon":138}', '{"lat":35}']) {
+    assert.equal(P.parseHome(bad), null, String(bad));
+  }
+  assert.equal(P.parseHome('{"lat":35,"lon":138,"zoom":30}').zoom, 11);
+  assert.equal(P.parseHome('{"lat":35,"lon":138,"zoom":"8"}').zoom, null);
+});
+
+test('URL と同じ小数点以下3桁まで同じなら同じ地点とみなす', () => {
+  // 検索で選んだ細かい座標と、URL から読んだ3桁の座標
+  assert.ok(P.isSamePlace({ lat: 33.94574, lon: 132.84996 }, { lat: 33.946, lon: 132.85 }));
+  assert.ok(!P.isSamePlace({ lat: 33.9457, lon: 132.85 }, { lat: 33.9477, lon: 132.85 }));
+  assert.ok(!P.isSamePlace(null, { lat: 1, lon: 1 }));
+});

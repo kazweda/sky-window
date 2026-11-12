@@ -2,7 +2,9 @@
   'use strict';
 
   const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
-  const { rankGsiResults, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl } = window.Places;
+  const {
+    rankGsiResults, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl, parseHome, serializeHome, isSamePlace,
+  } = window.Places;
 
   const API = 'https://api.open-meteo.com/v1/forecast';
   const GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search';
@@ -31,7 +33,7 @@
     slider: $('slider'), play: $('play'), now: $('now'),
     search: $('search'), searchInput: $('search-input'), searchResults: $('search-results'),
     fetched: $('fetched'),
-    placeActions: $('place-actions'), gmap: $('gmap'), copyCoords: $('copy-coords'),
+    placeActions: $('place-actions'), gmap: $('gmap'), copyCoords: $('copy-coords'), homeToggle: $('home-toggle'),
   };
 
   const state = {
@@ -160,6 +162,7 @@
     el.place.textContent = place.name;
     el.gmap.href = googleMapsUrl(place.lat, place.lon);
     el.placeActions.hidden = false;
+    renderHomeToggle();
     if (fromUser) urlActive = true;
     if (!marker) marker = L.marker([place.lat, place.lon], { icon: pinIcon, keyboard: false, interactive: false }).addTo(map);
     else marker.setLatLng([place.lat, place.lon]);
@@ -611,6 +614,55 @@
     copyTimer = setTimeout(() => { el.copyCoords.textContent = COPY_LABEL; }, 1500);
   });
 
+  // --- 初期位置 ---
+  // 何も付けずに開いたときの地点を、このブラウザに保存する。
+  // 保存できない環境(プライベートブラウズなど)では、ボタンを出さず野辺山で開く。
+  const HOME_KEY = 'sky-window:home';
+  const storage = (() => {
+    try {
+      const s = window.localStorage;
+      s.setItem(`${HOME_KEY}:test`, '1');
+      s.removeItem(`${HOME_KEY}:test`);
+      return s;
+    } catch {
+      return null;
+    }
+  })();
+
+  function loadHome() {
+    try {
+      return storage ? parseHome(storage.getItem(HOME_KEY)) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  let home = loadHome();
+
+  function renderHomeToggle() {
+    el.homeToggle.hidden = !storage;
+    el.homeToggle.textContent = isSamePlace(home, state.place) ? '初期位置を解除' : '初期位置にする';
+  }
+
+  el.homeToggle.addEventListener('click', () => {
+    if (!storage || !state.place) return;
+    try {
+      if (isSamePlace(home, state.place)) {
+        storage.removeItem(HOME_KEY);
+        home = null;
+      } else {
+        const name = state.place.named ? state.place.name : null;
+        storage.setItem(HOME_KEY, serializeHome({ ...state.place, name }, map.getZoom()));
+        home = loadHome();
+      }
+    } catch (err) {
+      console.error(err);
+      el.homeToggle.textContent = '保存できませんでした';
+      return;
+    }
+    renderHomeToggle();
+  });
+
   // --- 起動 ---
   function openPlace(p, zoom) {
     const place = { name: p.name || coordName(p.lat, p.lon), lat: p.lat, lon: p.lon, named: Boolean(p.name) };
@@ -628,8 +680,12 @@
   if (fromUrl) {
     openPlace(fromUrl, fromUrl.zoom ?? DEFAULT_ZOOM);
   } else {
-    // 不正な値が付いていたら、ブックマークに残らないよう取り除いてから既定の地点を開く。
+    // 不正な値が付いていたら、ブックマークに残らないよう取り除いてから開く。
     if (location.search || location.hash) history.replaceState(null, '', location.pathname);
-    selectPlace(DEFAULT_PLACE, { pan: true, fromUser: false });
+    // URL の指定がなければ、保存した初期位置、それもなければ野辺山を開く。URL は変えない。
+    const start = home
+      ? { name: home.name || coordName(home.lat, home.lon), lat: home.lat, lon: home.lon, named: Boolean(home.name) }
+      : DEFAULT_PLACE;
+    selectPlace(start, { pan: true, zoom: home?.zoom ?? DEFAULT_ZOOM, fromUser: false });
   }
 })();
