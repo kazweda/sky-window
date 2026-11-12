@@ -27,7 +27,7 @@
 node --test
 ```
 
-PR と main へのプッシュでは、GitHub Actions でも同じテストを実行します。
+PR と main へのプッシュでは、GitHub Actions でも同じテストを実行します。Node のバージョンは `.node-version` で手元と CI をそろえています。
 
 ## データと利用条件
 
