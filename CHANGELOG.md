@@ -4,6 +4,18 @@ Sky Window の利用者に関わる変更を記録します。書き方は [Keep
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
+### 追加
+
+- 地点の URL に地名とズームも入るようにしました(例:`?lat=33.946&lon=132.850&name=高縄山&z=10`)。ブックマークして開くと、同じ地名とズームで表示されます。
+
+### 変更
+
+- 地点を選んだりズームを変えたりしても、ブラウザの「戻る」の履歴が増えないようにしました。
+- 地図のタップや URL で開いた地点の名前を、「北緯 35.95°, 東経 138.47°」の形にそろえました。
+- 以前の形式(`#35.953,138.473`)でブックマークした URL も開けます。開くと新しい形式に書き換わります。
+
 ## [0.1.0] - 2026-11-12
 
 最初の公開版です。https://skywindow.netplan.jp/ で公開しています。
@@ -21,5 +33,6 @@ Sky Window の利用者に関わる変更を記録します。書き方は [Keep
 - Buy Me a Coffee へのリンクを置きました。
 - 画面の下部に、版の番号と更新履歴へのリンクを表示しました。
 
-[Unreleased]: https://github.com/kazweda/sky-window/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kazweda/sky-window/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kazweda/sky-window/releases/tag/v0.2.0
 [0.1.0]: https://github.com/kazweda/sky-window/releases/tag/v0.1.0

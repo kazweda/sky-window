@@ -1,4 +1,4 @@
-// 地名検索の結果を整える処理。UIに依存しない。ブラウザでは globalThis.Places として使う。
+// 地名検索の結果と、地点を表す URL を扱う処理。UIに依存しない。ブラウザでは globalThis.Places として使う。
 (function (root) {
   'use strict';
 
@@ -74,5 +74,41 @@
     return picked;
   }
 
-  root.Places = { rankGsiResults, prefFromCode };
+  // --- 地点の URL ---
+  // ?lat=35.953&lon=138.473&name=野辺山&z=8 の形式。name と z は省略できる。
+  // 以前の #35.953,138.473 の形式も読めるようにする(ブックマーク済みの URL のため)。
+  const ZOOM_MIN = 2;
+  const ZOOM_MAX = 11;
+  const NAME_MAX = 100;
+  const NUMBER = /^-?\d+(?:\.\d+)?$/;
+
+  function parsePlaceUrl(search, hash) {
+    const q = new URLSearchParams(search || '');
+    let lat;
+    let lon;
+    if (q.has('lat') || q.has('lon')) {
+      if (!NUMBER.test(q.get('lat') || '') || !NUMBER.test(q.get('lon') || '')) return null;
+      lat = Number(q.get('lat'));
+      lon = Number(q.get('lon'));
+    } else {
+      const m = (hash || '').match(/^#(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+      if (!m) return null;
+      lat = Number(m[1]);
+      lon = Number(m[2]);
+    }
+    if (Math.abs(lat) > 85 || Math.abs(lon) > 180) return null;
+    const name = (q.get('name') || '').trim().slice(0, NAME_MAX) || null;
+    const z = q.get('z');
+    const zoom = z != null && /^\d+$/.test(z) ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(z))) : null;
+    return { lat, lon, name, zoom };
+  }
+
+  function placeQuery({ lat, lon, name }, zoom) {
+    const q = new URLSearchParams({ lat: lat.toFixed(3), lon: lon.toFixed(3) });
+    if (name) q.set('name', name);
+    if (zoom != null) q.set('z', String(zoom));
+    return `?${q}`;
+  }
+
+  root.Places = { rankGsiResults, prefFromCode, parsePlaceUrl, placeQuery };
 })(globalThis);
