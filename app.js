@@ -36,8 +36,17 @@
 
   // --- 地図 ---
   const map = L.map('map', { worldCopyJump: false, maxZoom: MAX_ZOOM }).setView([DEFAULT_PLACE.lat, DEFAULT_PLACE.lon], 8);
-  L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
-    minZoom: 2, maxZoom: MAX_ZOOM, className: 'base-tiles',
+  // 主役は雲なので、背景地図は不透明度を下げて地図の背景色に溶かす(色は style.css の .base-tiles)。
+  // 明るさやコントラストで暗くすると黒が浮き、雲との差が縮む。
+  // 広い範囲では海岸線が消えないように、拡大したときは地名や道路が読めるように、少し濃くする。
+  // Leaflet がレイヤーに不透明度を直接書き込むため、CSS ではなく setOpacity で指定する。
+  const baseOpacity = (zoom) => {
+    if (zoom <= 6) return 0.6;
+    if (zoom >= 10) return 0.85;
+    return zoom === 9 ? 0.55 : 0.38;
+  };
+  const baseLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+    minZoom: 2, maxZoom: MAX_ZOOM, className: 'base-tiles', opacity: baseOpacity(map.getZoom()),
     // 色を反転して表示しているため、加工したことを併記する(国土地理院コンテンツ利用規約)。
     attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>を加工して作成',
   }).addTo(map);
@@ -56,6 +65,8 @@
   offscreen.width = offscreen.height = OVERLAY_PX;
   const offCtx = offscreen.getContext('2d');
   const offImage = offCtx.createImageData(OVERLAY_PX, OVERLAY_PX);
+
+  map.on('zoomend', () => baseLayer.setOpacity(baseOpacity(map.getZoom())));
 
   map.on('click', (e) => {
     const { lat } = e.latlng;
