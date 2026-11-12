@@ -118,5 +118,31 @@
   const googleMapsUrl = (lat, lon) =>
     `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(4)},${lon.toFixed(4)}`;
 
-  root.Places = { rankGsiResults, prefFromCode, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl };
+  // --- 初期位置 ---
+  // ブラウザに保存した初期位置を読む。壊れた値や範囲外の値なら null。
+  function parseHome(json) {
+    let v;
+    try {
+      v = JSON.parse(json);
+    } catch {
+      return null;
+    }
+    if (!v || typeof v !== 'object') return null;
+    const { lat, lon } = v;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) return null;
+    const name = typeof v.name === 'string' && v.name.trim() ? v.name.trim().slice(0, NAME_MAX) : null;
+    const zoom = Number.isInteger(v.zoom) ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v.zoom)) : null;
+    return { lat, lon, name, zoom };
+  }
+
+  const serializeHome = ({ lat, lon, name }, zoom) => JSON.stringify({ lat, lon, name: name || null, zoom });
+
+  // URL と同じ小数点以下3桁(約100m)まで同じなら、同じ地点とみなす。
+  // 初期位置にした地点を URL から開き直しても、同じ地点と判定できるようにするため。
+  const isSamePlace = (a, b) => Boolean(a && b) && a.lat.toFixed(3) === b.lat.toFixed(3) && a.lon.toFixed(3) === b.lon.toFixed(3);
+
+  root.Places = {
+    rankGsiResults, prefFromCode, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl,
+    parseHome, serializeHome, isSamePlace,
+  };
 })(globalThis);
