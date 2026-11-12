@@ -89,3 +89,9 @@ test('地点を URL のパラメータにし、読み戻すと同じになる', 
   assert.deepEqual(P.parsePlaceUrl(q, ''), { lat: 33.946, lon: 132.85, name: '高縄山', zoom: 10 });
   assert.equal(P.placeQuery({ lat: 35, lon: 138, name: null }, 8), '?lat=35.000&lon=138.000&z=8');
 });
+
+test('緯度・経度を小数点以下4桁にし、Google マップの URL を作る', () => {
+  assert.equal(P.formatCoords(35.95301, 138.473), '35.9530, 138.4730');
+  assert.equal(P.formatCoords(-33.86882, 151.20929), '-33.8688, 151.2093');
+  assert.equal(P.googleMapsUrl(33.94574, 132.84996), 'https://www.google.com/maps/search/?api=1&query=33.9457,132.8500');
+});
