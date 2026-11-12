@@ -60,3 +60,32 @@ test('市区町村コードから都道府県を求める', () => {
   assert.equal(P.prefFromCode('47201'), '沖縄県');
   assert.equal(P.prefFromCode(''), '');
 });
+
+test('URL のパラメータから地点、地名、ズームを読む', () => {
+  assert.deepEqual(P.parsePlaceUrl('?lat=35.953&lon=138.473&name=%E9%87%8E%E8%BE%BA%E5%B1%B1&z=9', ''),
+    { lat: 35.953, lon: 138.473, name: '野辺山', zoom: 9 });
+  assert.deepEqual(P.parsePlaceUrl('?lat=-33.9&lon=151.2', ''), { lat: -33.9, lon: 151.2, name: null, zoom: null });
+});
+
+test('以前の #緯度,経度 の形式も読む', () => {
+  assert.deepEqual(P.parsePlaceUrl('', '#35.953,138.473'), { lat: 35.953, lon: 138.473, name: null, zoom: null });
+});
+
+test('不正な値は地点として扱わず、ズームと地名は範囲に収める', () => {
+  for (const search of ['?lat=abc&lon=138', '?lat=35', '?lat=86&lon=138', '?lat=35&lon=181', '?lat=1e2&lon=0']) {
+    assert.equal(P.parsePlaceUrl(search, ''), null, search);
+  }
+  assert.equal(P.parsePlaceUrl('', ''), null);
+  assert.equal(P.parsePlaceUrl('?lat=35&lon=138&z=20', '').zoom, 11);
+  assert.equal(P.parsePlaceUrl('?lat=35&lon=138&z=0', '').zoom, 2);
+  assert.equal(P.parsePlaceUrl('?lat=35&lon=138&z=8.5', '').zoom, null);
+  assert.equal(P.parsePlaceUrl(`?lat=35&lon=138&name=${'あ'.repeat(150)}`, '').name.length, 100);
+  assert.equal(P.parsePlaceUrl('?lat=35&lon=138&name=%20%20', '').name, null);
+});
+
+test('地点を URL のパラメータにし、読み戻すと同じになる', () => {
+  const q = P.placeQuery({ lat: 33.9457, lon: 132.85, name: '高縄山' }, 10);
+  assert.equal(q, '?lat=33.946&lon=132.850&name=%E9%AB%98%E7%B8%84%E5%B1%B1&z=10');
+  assert.deepEqual(P.parsePlaceUrl(q, ''), { lat: 33.946, lon: 132.85, name: '高縄山', zoom: 10 });
+  assert.equal(P.placeQuery({ lat: 35, lon: 138, name: null }, 8), '?lat=35.000&lon=138.000&z=8');
+});

@@ -2,7 +2,7 @@
   'use strict';
 
   const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
-  const { rankGsiResults } = window.Places;
+  const { rankGsiResults, parsePlaceUrl, placeQuery } = window.Places;
 
   const API = 'https://api.open-meteo.com/v1/forecast';
   const GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search';
@@ -11,7 +11,9 @@
   const MAX_ZOOM = 11; // 市全体を一望できる範囲まで
   const OVERLAY_PX = 180;
   const LABEL_W = 34;
-  const DEFAULT_PLACE = { name: '野辺山', lat: 35.953, lon: 138.473 };
+  // named: 地名を持つ地点か。地図のタップなど緯度・経度だけの地点は false で、URL に地名を入れない。
+  const DEFAULT_PLACE = { name: '野辺山', lat: 35.953, lon: 138.473, named: true };
+  const DEFAULT_ZOOM = 8;
   const MAX_AGE_MS = 30 * 60 * 1000; // これより古い予報は取り直す
 
   const LAYERS = [
@@ -41,7 +43,7 @@
   let debounceTimer = null;
 
   // --- 地図 ---
-  const map = L.map('map', { worldCopyJump: false, maxZoom: MAX_ZOOM }).setView([DEFAULT_PLACE.lat, DEFAULT_PLACE.lon], 8);
+  const map = L.map('map', { worldCopyJump: false, maxZoom: MAX_ZOOM }).setView([DEFAULT_PLACE.lat, DEFAULT_PLACE.lon], DEFAULT_ZOOM);
   // 主役は雲なので、背景地図は不透明度を下げて地図の背景色に溶かす(色は style.css の .base-tiles)。
   // 明るさやコントラストで暗くすると黒が浮き、雲との差が縮む。
   // 広い範囲では海岸線が消えないように、拡大したときは地名や道路が読めるように、少し濃くする。
@@ -72,12 +74,15 @@
   const offCtx = offscreen.getContext('2d');
   const offImage = offCtx.createImageData(OVERLAY_PX, OVERLAY_PX);
 
-  map.on('zoomend', () => baseLayer.setOpacity(baseOpacity(map.getZoom())));
+  map.on('zoomend', () => {
+    baseLayer.setOpacity(baseOpacity(map.getZoom()));
+    updateUrl();
+  });
 
   map.on('click', (e) => {
     const { lat } = e.latlng;
     const lon = wrapLon(e.latlng.lng);
-    selectPlace({ name: `北緯 ${lat.toFixed(2)}°, 東経 ${lon.toFixed(2)}°`.replace('北緯 -', '南緯 ').replace('東経 -', '西経 '), lat, lon });
+    selectPlace({ name: coordName(lat, lon), lat, lon, named: false });
   });
 
   function errorMessage(err) {
@@ -136,14 +141,27 @@
   }
 
   // --- 目的地の選択 ---
-  function selectPlace(place, { pan = false } = {}) {
+  const coordName = (lat, lon) => `北緯 ${lat.toFixed(2)}°, 東経 ${lon.toFixed(2)}°`.replace('北緯 -', '南緯 ').replace('東経 -', '西経 ');
+
+  // URL に地点を書くのは、URL で開いたときか、利用者が地点を選んだ後だけ。
+  // 何も付けずに開いたままなら URL を変えない(#11 の「保存した初期位置」を URL より優先させないため)。
+  let urlActive = false;
+  function updateUrl() {
+    if (!urlActive || !state.place) return;
+    const query = placeQuery({ ...state.place, name: state.place.named ? state.place.name : null }, map.getZoom());
+    // 「戻る」の履歴を増やさないよう、置き換える。
+    history.replaceState(null, '', `${location.pathname}${query}`);
+  }
+
+  function selectPlace(place, { pan = false, zoom = DEFAULT_ZOOM, fromUser = true } = {}) {
     stopPlayback();
     state.place = place;
     el.place.textContent = place.name;
-    location.hash = `${place.lat.toFixed(3)},${place.lon.toFixed(3)}`;
+    if (fromUser) urlActive = true;
     if (!marker) marker = L.marker([place.lat, place.lon], { icon: pinIcon, keyboard: false, interactive: false }).addTo(map);
     else marker.setLatLng([place.lat, place.lon]);
-    if (pan) map.setView([place.lat, place.lon], 8);
+    if (pan) map.setView([place.lat, place.lon], zoom);
+    updateUrl();
     showStatus('雲の予報を読み込んでいます…');
 
     // 連続クリックでAPIを消費しないよう少し待つ。
@@ -556,7 +574,7 @@
         btn.textContent = r.label;
         btn.addEventListener('click', () => {
           list.hidden = true;
-          selectPlace({ name: r.name, lat: r.lat, lon: r.lon }, { pan: true });
+          selectPlace({ name: r.name, lat: r.lat, lon: r.lon, named: true }, { pan: true });
         });
         li.append(btn);
         return li;
@@ -570,13 +588,24 @@
   });
 
   // --- 起動 ---
-  function placeFromHash() {
-    const match = location.hash.match(/^#(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
-    if (!match) return null;
-    const lat = Number(match[1]);
-    const lon = Number(match[2]);
-    if (Math.abs(lat) > 85 || Math.abs(lon) > 180) return null;
-    return { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, lat, lon };
+  function openPlace(p, zoom) {
+    const place = { name: p.name || coordName(p.lat, p.lon), lat: p.lat, lon: p.lon, named: Boolean(p.name) };
+    selectPlace(place, { pan: true, zoom }); // URL は新しい形式に書き換わる
   }
-  selectPlace(placeFromHash() || DEFAULT_PLACE, { pan: true });
+
+  // 開いたままアドレスバーで #緯度,経度 を書き換えたときも反応する(?以降を変えるとページが読み直される)。
+  // このときは ?lat=… より # の値を優先し、ズームは今のまま保つ。
+  window.addEventListener('hashchange', () => {
+    const p = parsePlaceUrl('', location.hash);
+    if (p) openPlace(p, map.getZoom());
+  });
+
+  const fromUrl = parsePlaceUrl(location.search, location.hash);
+  if (fromUrl) {
+    openPlace(fromUrl, fromUrl.zoom ?? DEFAULT_ZOOM);
+  } else {
+    // 不正な値が付いていたら、ブックマークに残らないよう取り除いてから既定の地点を開く。
+    if (location.search || location.hash) history.replaceState(null, '', location.pathname);
+    selectPlace(DEFAULT_PLACE, { pan: true, fromUser: false });
+  }
 })();
