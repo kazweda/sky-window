@@ -23,22 +23,12 @@
     ...LAYERS.flatMap((l) => [`wind_speed_${l.windLevel}`, `wind_direction_${l.windLevel}`])];
 
   const $ = (id) => document.getElementById(id);
-  // デプロイ直後は、キャッシュに残った古い index.html と新しい app.js が組み合わさることがある
-  // (GitHub Pages は各ファイルを10分キャッシュさせる)。後から足した欄がなければ作る。
-  function createFetched() {
-    const p = document.createElement('p');
-    p.id = 'fetched';
-    p.className = 'fetched';
-    p.hidden = true;
-    $('time').after(p);
-    return p;
-  }
   const el = {
     place: $('place'), time: $('time'), status: $('status'), total: $('total'), layers: $('layers'),
     flow: $('flow'), winds: $('winds'), windows: $('windows'), timeline: $('timeline'),
     slider: $('slider'), play: $('play'), now: $('now'),
     search: $('search'), searchInput: $('search-input'), searchResults: $('search-results'),
-    fetched: $('fetched') || createFetched(),
+    fetched: $('fetched'),
   };
 
   const state = {
