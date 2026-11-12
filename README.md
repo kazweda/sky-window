@@ -33,7 +33,7 @@
 node --test
 ```
 
-PR と main へのプッシュでは、GitHub Actions でも同じテストを実行します。Node のバージョンは `.node-version` で手元と CI をそろえています。
+PR では GitHub Actions でも同じテストを実行します。main にマージすると、テストを通してから GitHub Pages に配信します。Node のバージョンは `.node-version` で手元と CI をそろえています。
 
 ## 更新履歴とリリース
 
