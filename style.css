@@ -93,6 +93,7 @@ h2 { margin: 22px 0 8px; font-size: 13px; font-weight: 600; color: var(--muted);
 .controls button { flex: none; }
 footer { margin-top: 20px; font-size: 12px; color: var(--muted); }
 footer p { margin: 4px 0; }
+footer .support { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 a { color: var(--accent); }
 
 @media (max-width: 800px) {

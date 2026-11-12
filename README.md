@@ -57,6 +57,14 @@ PR と main へのプッシュでは、GitHub Actions でも同じテストを�
 - 背景地図は、日本国外ではズーム8までしか表示されません(雲のデータは取得できます)。
 - 目的地を選ぶたびに81地点分を取得するため、APIの利用回数を多めに消費します。
 
+## 開発の支援
+
+If you like Sky Window, you can support my work here!
+
+☕ [Buy me a coffee](https://buymeacoffee.com/netplan)
+
+寄付は任意で、見返りはありません。Open-Meteo の規約では、投げ銭を含む任意の寄付は無料枠のまま受け付けられます。
+
 ## ライセンス
 
 このリポジトリのコードは [MIT License](LICENSE) で公開しています。予報データや背景地図など外部のコンテンツには、上の「データと利用条件」に書いた各提供元の条件が適用されます。
