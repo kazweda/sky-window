@@ -1,0 +1,78 @@
+// 地名検索の結果を整える処理。UIに依存しない。ブラウザでは globalThis.Places として使う。
+(function (root) {
+  'use strict';
+
+  const PREFS = ['北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県', '茨城県', '栃木県', '群馬県',
+    '埼玉県', '千葉県', '東京都', '神奈川県', '新潟県', '富山県', '石川県', '福井県', '山梨県', '長野県',
+    '岐阜県', '静岡県', '愛知県', '三重県', '滋賀県', '京都府', '大阪府', '兵庫県', '奈良県', '和歌山県',
+    '鳥取県', '島根県', '岡山県', '広島県', '山口県', '徳島県', '香川県', '愛媛県', '高知県', '福岡県',
+    '佐賀県', '長崎県', '熊本県', '大分県', '宮崎県', '鹿児島県', '沖縄県'];
+
+  // 市区町村コードは先頭の0が落ちて返ることがある(「3203」は岩手県)。
+  function prefFromCode(code) {
+    const s = String(code || '');
+    if (s.length < 4) return '';
+    return PREFS[Number(s.slice(0, s.length - 3)) - 1] || '';
+  }
+
+  const normalize = (s) => String(s).normalize('NFKC').replace(/\s+/g, '');
+  const stripPref = (title) => {
+    const pref = PREFS.find((p) => title.startsWith(p));
+    return pref ? title.slice(pref.length) : title;
+  };
+  // 住所(dataSource なし)を先に、施設や郵便局を後にする。
+  const SOURCE_ORDER = { '': 0, 4: 1, 5: 2, 1: 3, 3: 4 };
+
+  // 施設(1)と郵便局(3)は、名前の一部が合うだけのことが多い(「ハッピーバレーGC札幌」など)。
+  const isFacility = (source) => source === '1' || source === '3';
+  // 4以下なら入力と合う地名として扱う。
+  const STRONG_KEY = 4;
+
+  function rankKey(title, isAddress, source, q) {
+    if (isAddress && title.endsWith(`${q}市`)) return 0;
+    if (title === q || (isAddress && title.endsWith(q))) return 1;
+    if (isAddress && /[区町村]$/.test(title) && title.slice(0, -1).endsWith(q)) return 2;
+    if (isFacility(source)) return 5;
+    if (title.endsWith(q)) return 3;
+    if (title.startsWith(q)) return 4;
+    return 5;
+  }
+
+  // 国土地理院の地名検索は、入力の一部(「高縄山」に対する「高」など)だけが合う地名も返す。
+  // 入力をそのまま含むものに絞り、市や名前が一致する地名を上にして、ほぼ同じ地点の重複を除く。
+  function rankGsiResults(features, query, limit = 6) {
+    const q = normalize(query);
+    if (!q) return [];
+    const ranked = (features || [])
+      .map((f, i) => {
+        const props = f.properties || {};
+        const title = normalize(props.title || '');
+        const isAddress = props.dataSource == null;
+        const [lon, lat] = f.geometry.coordinates;
+        return {
+          title, isAddress, lat, lon, i,
+          key: rankKey(title, isAddress, props.dataSource, q),
+          source: SOURCE_ORDER[props.dataSource ?? ''] ?? 5,
+          pref: isAddress ? '' : prefFromCode(props.addressCode),
+        };
+      })
+      .filter((r) => r.title.includes(q) && Number.isFinite(r.lat) && Number.isFinite(r.lon))
+      .sort((a, b) => a.key - b.key || a.source - b.source || a.i - b.i);
+
+    const picked = [];
+    for (const r of ranked) {
+      if (picked.some((p) => Math.abs(p.lat - r.lat) < 0.01 && Math.abs(p.lon - r.lon) < 0.01)) continue;
+      picked.push({
+        name: r.isAddress ? stripPref(r.title) : r.title,
+        label: r.isAddress ? r.title : [r.title, r.pref].filter(Boolean).join('、'),
+        lat: r.lat,
+        lon: r.lon,
+        strong: r.key <= STRONG_KEY,
+      });
+      if (picked.length >= limit) break;
+    }
+    return picked;
+  }
+
+  root.Places = { rankGsiResults, prefFromCode };
+})(globalThis);

@@ -2,9 +2,11 @@
   'use strict';
 
   const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findObservingWindows, wrapLon } = window.Forecast;
+  const { rankGsiResults } = window.Places;
 
   const API = 'https://api.open-meteo.com/v1/forecast';
   const GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search';
+  const GSI_SEARCH = 'https://msearch.gsi.go.jp/address-search/AddressSearch';
   const FORECAST_DAYS = 3;
   const MAX_ZOOM = 11; // 市全体を一望できる範囲まで
   const OVERLAY_PX = 180;
@@ -395,21 +397,41 @@
   window.addEventListener('resize', () => { if (state.center) renderTimeline(); });
 
   // --- 地名検索 ---
-  async function geocode(name) {
+  // 国内の地名は国土地理院で探す。Open-Meteo は「札幌」「高縄山」のような日本語の地名を
+  // 見つけられないことが多いため、国土地理院に合う地名がないとき(主に海外)だけ併用する。
+  async function geocodeGsi(name) {
+    const data = await fetchJson(`${GSI_SEARCH}?${new URLSearchParams({ q: name })}`);
+    return rankGsiResults(data, name);
+  }
+
+  async function geocodeOpenMeteo(name) {
     const params = new URLSearchParams({ name, count: 6, language: 'ja', format: 'json' });
     const data = await fetchJson(`${GEOCODE}?${params}`);
-    return data.results || [];
+    return (data.results || []).map((r) => ({
+      name: r.name,
+      label: [r.name, r.admin1, r.country].filter(Boolean).join('、'),
+      lat: r.latitude,
+      lon: r.longitude,
+    }));
   }
 
-  // APIは「札幌市」で見つかっても「札幌」では0件になるため、行政区分を補って再検索する。
   async function searchPlaces(name) {
-    const direct = await geocode(name);
-    if (direct.length) return direct;
-    const retried = await Promise.all(['市', '都', '府', '県'].map((suffix) => geocode(name + suffix)));
-    const byId = new Map(retried.flat().map((r) => [r.id, r]));
-    return [...byId.values()];
+    let domestic = [];
+    try {
+      domestic = await geocodeGsi(name);
+    } catch (err) {
+      console.error(err); // 国土地理院が使えなくても Open-Meteo で探す
+    }
+    if (domestic.some((r) => r.strong)) return domestic;
+    // 「ハワイ」で国内の施設名だけが見つかった場合などは、海外の候補を先に並べる。
+    const abroad = await geocodeOpenMeteo(name).catch((err) => {
+      if (domestic.length) { console.error(err); return []; }
+      throw err;
+    });
+    return [...abroad, ...domestic].slice(0, 6);
   }
 
+  let searchSeq = 0;
   el.search.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = el.searchInput.value.trim();
@@ -422,17 +444,21 @@
       list.replaceChildren(li);
       list.hidden = false;
     };
+    // 続けて検索したとき、遅れて届いた前の結果で一覧を上書きしない。
+    const seq = ++searchSeq;
+    addEmpty('検索しています…');
     try {
       const results = await searchPlaces(name);
+      if (seq !== searchSeq) return;
       if (!results.length) { addEmpty('見つかりませんでした。別の表記で検索するか、地図をタップしてください。'); return; }
       list.replaceChildren(...results.map((r) => {
         const li = document.createElement('li');
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = [r.name, r.admin1, r.country].filter(Boolean).join('、');
+        btn.textContent = r.label;
         btn.addEventListener('click', () => {
           list.hidden = true;
-          selectPlace({ name: r.name, lat: r.latitude, lon: r.longitude }, { pan: true });
+          selectPlace({ name: r.name, lat: r.lat, lon: r.lon }, { pan: true });
         });
         li.append(btn);
         return li;
@@ -440,6 +466,7 @@
       list.hidden = false;
     } catch (err) {
       console.error(err);
+      if (seq !== searchSeq) return;
       addEmpty(err instanceof TypeError ? '通信できませんでした。' : err.message);
     }
   });
