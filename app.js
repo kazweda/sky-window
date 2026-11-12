@@ -23,12 +23,22 @@
     ...LAYERS.flatMap((l) => [`wind_speed_${l.windLevel}`, `wind_direction_${l.windLevel}`])];
 
   const $ = (id) => document.getElementById(id);
+  // デプロイ直後は、キャッシュに残った古い index.html と新しい app.js が組み合わさることがある
+  // (GitHub Pages は各ファイルを10分キャッシュさせる)。後から足した欄がなければ作る。
+  function createFetched() {
+    const p = document.createElement('p');
+    p.id = 'fetched';
+    p.className = 'fetched';
+    p.hidden = true;
+    $('time').after(p);
+    return p;
+  }
   const el = {
     place: $('place'), time: $('time'), status: $('status'), total: $('total'), layers: $('layers'),
     flow: $('flow'), winds: $('winds'), windows: $('windows'), timeline: $('timeline'),
     slider: $('slider'), play: $('play'), now: $('now'),
     search: $('search'), searchInput: $('search-input'), searchResults: $('search-results'),
-    fetched: $('fetched'),
+    fetched: $('fetched') || createFetched(),
   };
 
   const state = {
@@ -80,11 +90,27 @@
     selectPlace({ name: `北緯 ${lat.toFixed(2)}°, 東経 ${lon.toFixed(2)}°`.replace('北緯 -', '南緯 ').replace('東経 -', '西経 '), lat, lon });
   });
 
+  function errorMessage(err) {
+    if (err instanceof NetworkError || err instanceof DataError) return err.message;
+    return '表示中に問題が起きました。ページを再読み込みしてください。';
+  }
+
   // --- データ取得 ---
+  // 通信の失敗だけを NetworkError にする。プログラムの不具合(TypeError など)を通信エラーと取り違えないため。
+  class NetworkError extends Error {}
+  // 画面に出してよい、想定どおりのエラー
+  class DataError extends Error {}
+
   async function fetchJson(url, signal) {
-    const res = await fetch(url, { signal });
-    if (res.status === 429) throw new Error('リクエストが多すぎます。少し待ってからお試しください。');
-    if (!res.ok) throw new Error(`データを取得できませんでした(HTTP ${res.status})。`);
+    let res;
+    try {
+      res = await fetch(url, { signal });
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      throw new NetworkError('通信できませんでした。接続を確認してください。');
+    }
+    if (res.status === 429) throw new DataError('リクエストが多すぎます。少し待ってからお試しください。');
+    if (!res.ok) throw new DataError(`データを取得できませんでした(HTTP ${res.status})。`);
     return res.json();
   }
 
@@ -111,7 +137,7 @@
     ), signal);
     const length = center.hourly.time.length;
     if (!Array.isArray(list) || list.length !== grid.points.length || list.some((p) => p.hourly.time.length !== length)) {
-      throw new Error('周辺の雲データの形式が想定と異なります。');
+      throw new DataError('周辺の雲データの形式が想定と異なります。');
     }
     const gridValues = list.map((p) => p.hourly.cloud_cover);
     const entry = { center, grid, gridValues, at: Date.now() };
@@ -147,8 +173,7 @@
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error(err);
-      const offline = err instanceof TypeError;
-      showStatus(offline ? '通信できませんでした。接続を確認してください。' : err.message, true);
+      showStatus(errorMessage(err), true);
     }
   }
 
@@ -550,7 +575,7 @@
     } catch (err) {
       console.error(err);
       if (seq !== searchSeq) return;
-      addEmpty(err instanceof TypeError ? '通信できませんでした。' : err.message);
+      addEmpty(errorMessage(err));
     }
   });
 
