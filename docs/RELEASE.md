@@ -7,7 +7,7 @@ Sky Window の配信と、版の番号の付け方をまとめます。
 `main` にマージすると、GitHub Actions([.github/workflows/pages.yml](../.github/workflows/pages.yml))が次の順に動き、数分で https://skywindow.netplan.jp/ に反映されます。
 
 1. テストを実行する。失敗したら配信しない
-2. 配信するファイル(`index.html`、`style.css`、`forecast.js`、`places.js`、`app.js`)をそろえる
+2. 配信するファイル(`index.html`、JS と CSS、`favicon.ico`、`manifest.webmanifest`、`assets/`)をそろえる。ファイルを増やしたときは、pages.yml のコピーの対象にも足す(漏れているとテストが失敗する)
 3. `index.html` の `?v=__BUILD__` を、コミットの ID(例:`?v=f2962e5`)に置き換える
 4. GitHub Pages に配信する
 

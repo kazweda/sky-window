@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Sky Window:夜空をのぞく窓。背景はアプリの配色(#0b1018)に合わせる -->
+  <rect width="64" height="64" rx="14" fill="#0b1018"/>
+  <!-- 小さく表示しても窓がわかるよう、中身を少し拡大する -->
+  <g transform="translate(32 32) scale(1.18) translate(-32 -32)">
+  <!-- 窓の中の夜空 -->
+  <rect x="13" y="11" width="38" height="42" rx="4" fill="#16233a"/>
+  <!-- 月と星 -->
+  <path d="M38.5 17.5a7 7 0 1 0 6.5 9.6a5.6 5.6 0 1 1-6.5-9.6z" fill="#ffd27a"/>
+  <circle cx="21" cy="19" r="1.6" fill="#e8f1ff"/>
+  <circle cx="26" cy="27" r="1.1" fill="#e8f1ff"/>
+  <!-- 雲 -->
+  <path d="M17 47a5 5 0 0 1 4.6-5a6.5 6.5 0 0 1 12.2-1.6a4.6 4.6 0 0 1 5.7 4.4a3.4 3.4 0 0 1 .5 6.7H20.5A3.6 3.6 0 0 1 17 47z" fill="#c9d6e6"/>
+  <!-- 窓枠 -->
+  <rect x="13" y="11" width="38" height="42" rx="4" fill="none" stroke="#8fc7ff" stroke-width="3.5"/>
+  <path d="M32 11v42M13 32h38" stroke="#8fc7ff" stroke-width="3"/>
+  </g>
+</svg>
