@@ -77,3 +77,21 @@ test('観測候補は昼と欠測を除外し、開始位置を守る', () => {
   assert.equal(w[0].start, 1);
   assert.equal(w[0].hours, 1);
 });
+
+test('現在の時刻の番号は、時刻の進みに合わせて増え、予報の範囲に収まる', () => {
+  const start = Date.UTC(2026, 10, 12, 0, 0);
+  const epochs = [0, 1, 2, 3].map((h) => start + h * 3600000);
+  assert.equal(F.currentIndex(epochs, start - 1), 0);
+  assert.equal(F.currentIndex(epochs, start + 59 * 60000), 0);
+  assert.equal(F.currentIndex(epochs, start + 61 * 60000), 1);
+  assert.equal(F.currentIndex(epochs, start + 10 * 3600000), 3);
+  assert.equal(F.currentIndex([], start), 0);
+});
+
+test('取り直した予報でも、見ていた時刻を同じ日時の番号に移す', () => {
+  const oldTimes = ['2026-11-12T22:00', '2026-11-12T23:00', '2026-11-13T00:00', '2026-11-13T01:00'];
+  const newTimes = ['2026-11-13T00:00', '2026-11-13T01:00', '2026-11-13T02:00'];
+  assert.equal(F.reindexTime(oldTimes, newTimes, 3), 1);
+  assert.equal(F.reindexTime(oldTimes, newTimes, 2.25), 0.25);
+  assert.equal(F.reindexTime(oldTimes, newTimes, 0), null);
+});
