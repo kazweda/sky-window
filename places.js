@@ -110,5 +110,13 @@
     return `?${q}`;
   }
 
-  root.Places = { rankGsiResults, prefFromCode, parsePlaceUrl, placeQuery };
+  // --- 地点を外で使う ---
+  // 小数点以下4桁(約10m)。観測地の位置を地図で確かめるのに十分な精度。
+  const formatCoords = (lat, lon) => `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+
+  // Google の公開している URL の形式(API キー不要)。スマホでは Google マップのアプリで開く。
+  const googleMapsUrl = (lat, lon) =>
+    `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(4)},${lon.toFixed(4)}`;
+
+  root.Places = { rankGsiResults, prefFromCode, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl };
 })(globalThis);

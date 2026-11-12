@@ -2,7 +2,7 @@
   'use strict';
 
   const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
-  const { rankGsiResults, parsePlaceUrl, placeQuery } = window.Places;
+  const { rankGsiResults, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl } = window.Places;
 
   const API = 'https://api.open-meteo.com/v1/forecast';
   const GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search';
@@ -31,6 +31,7 @@
     slider: $('slider'), play: $('play'), now: $('now'),
     search: $('search'), searchInput: $('search-input'), searchResults: $('search-results'),
     fetched: $('fetched'),
+    placeActions: $('place-actions'), gmap: $('gmap'), copyCoords: $('copy-coords'),
   };
 
   const state = {
@@ -157,6 +158,8 @@
     stopPlayback();
     state.place = place;
     el.place.textContent = place.name;
+    el.gmap.href = googleMapsUrl(place.lat, place.lon);
+    el.placeActions.hidden = false;
     if (fromUser) urlActive = true;
     if (!marker) marker = L.marker([place.lat, place.lon], { icon: pinIcon, keyboard: false, interactive: false }).addTo(map);
     else marker.setLatLng([place.lat, place.lon]);
@@ -585,6 +588,27 @@
       if (seq !== searchSeq) return;
       addEmpty(errorMessage(err));
     }
+  });
+
+  // --- 緯度・経度のコピー ---
+  // クリップボードは https か localhost でしか使えない。使えないときはボタンを出さない。
+  const canCopy = Boolean(navigator.clipboard && window.isSecureContext);
+  el.copyCoords.hidden = !canCopy;
+  const COPY_LABEL = el.copyCoords.textContent;
+  let copyTimer = null;
+  el.copyCoords.addEventListener('click', async () => {
+    if (!state.place) return;
+    let message;
+    try {
+      await navigator.clipboard.writeText(formatCoords(state.place.lat, state.place.lon));
+      message = 'コピーしました';
+    } catch (err) {
+      console.error(err);
+      message = 'コピーできませんでした';
+    }
+    el.copyCoords.textContent = message;
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { el.copyCoords.textContent = COPY_LABEL; }, 1500);
   });
 
   // --- 起動 ---
