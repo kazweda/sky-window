@@ -41,9 +41,9 @@
   // 広い範囲では海岸線が消えないように、拡大したときは地名や道路が読めるように、少し濃くする。
   // Leaflet がレイヤーに不透明度を直接書き込むため、CSS ではなく setOpacity で指定する。
   const baseOpacity = (zoom) => {
-    if (zoom <= 6) return 0.6;
-    if (zoom >= 10) return 0.85;
-    return zoom === 9 ? 0.55 : 0.38;
+    if (zoom <= 6) return 0.8;
+    if (zoom >= 10) return 0.9;
+    return zoom === 9 ? 0.8 : 0.7;
   };
   const baseLayer = L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
     minZoom: 2, maxZoom: MAX_ZOOM, className: 'base-tiles', opacity: baseOpacity(map.getZoom()),
