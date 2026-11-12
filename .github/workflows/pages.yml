@@ -1,0 +1,59 @@
+name: pages
+
+# main にマージすると、テストを通してから GitHub Pages に配信する。
+# 配信するときに index.html の ?v=__BUILD__ をコミットの ID に置き換え、
+# 更新のたびにブラウザが新しい JS と CSS を読み込むようにする(キャッシュ対策)。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 配信が重なったときは、後から始まったものを優先する。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - run: node --test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - name: 配信するファイルをそろえる
+        run: |
+          mkdir _site
+          cp index.html style.css forecast.js places.js app.js _site/
+          build="${GITHUB_SHA::7}"
+          sed -i "s/?v=__BUILD__/?v=${build}/g" _site/index.html
+          # 置き換えが漏れていたら配信しない
+          if grep -q '__BUILD__' _site/index.html; then
+            echo "index.html に __BUILD__ が残っている" >&2
+            exit 1
+          fi
+          test "$(grep -c "?v=${build}" _site/index.html)" -eq 4
+      - uses: actions/upload-pages-artifact@v5
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
