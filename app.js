@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findObservingWindows, wrapLon } = window.Forecast;
+  const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
   const { rankGsiResults } = window.Places;
 
   const API = 'https://api.open-meteo.com/v1/forecast';
@@ -12,6 +12,7 @@
   const OVERLAY_PX = 180;
   const LABEL_W = 34;
   const DEFAULT_PLACE = { name: '野辺山', lat: 35.953, lon: 138.473 };
+  const MAX_AGE_MS = 30 * 60 * 1000; // これより古い予報は取り直す
 
   const LAYERS = [
     { key: 'cloud_cover_low', label: '下層', windLevel: '850hPa', height: '約1.5km' },
@@ -27,9 +28,14 @@
     flow: $('flow'), winds: $('winds'), windows: $('windows'), timeline: $('timeline'),
     slider: $('slider'), play: $('play'), now: $('now'),
     search: $('search'), searchInput: $('search-input'), searchResults: $('search-results'),
+    fetched: $('fetched'),
   };
 
-  const state = { place: null, center: null, grid: null, gridValues: null, t: 0, nowIndex: 0, sunAlts: [], timer: null };
+  const state = {
+    place: null, loadedPlace: null, center: null, grid: null, gridValues: null,
+    t: 0, nowIndex: 0, epochs: [], sunAlts: [], timer: null,
+    fetchedAt: 0, refreshing: false, refreshFailed: false,
+  };
   const cache = new Map();
   let loadController = null;
   let debounceTimer = null;
@@ -93,7 +99,7 @@
   async function fetchForecast(place, signal) {
     const key = `${place.lat.toFixed(2)},${place.lon.toFixed(2)}`;
     const cached = cache.get(key);
-    if (cached && Date.now() - cached.at < 30 * 60 * 1000) return cached;
+    if (cached && Date.now() - cached.at < MAX_AGE_MS) return cached;
 
     const center = await fetchJson(forecastUrl(place.lat, place.lon, HOURLY_VARS, 'auto'), signal);
     // 全地点の時刻軸を揃えるため、中心地点のタイムゾーンで周辺を取得する。
@@ -146,15 +152,22 @@
     }
   }
 
-  function apply(place, data) {
+  // keepTime: 予報を取り直したときに、見ている時刻を保つ(「現在」を見ていれば新しい「現在」へ)。
+  function apply(place, data, { keepTime = false } = {}) {
+    const following = isFollowingNow();
+    const oldTimes = state.center ? state.center.hourly.time : [];
     state.center = data.center;
     state.grid = data.grid;
     state.gridValues = data.gridValues;
+    state.loadedPlace = place;
+    state.fetchedAt = data.at;
+    state.refreshFailed = false;
     const { time } = data.center.hourly;
     const offset = data.center.utc_offset_seconds;
-    const epochs = time.map((t) => localToEpoch(t, offset));
-    state.sunAlts = epochs.map((e) => sunAltitude(e, place.lat, place.lon));
-    state.nowIndex = Math.max(0, Math.min(time.length - 1, Math.floor((Date.now() - epochs[0]) / 3600000)));
+    state.epochs = time.map((t) => localToEpoch(t, offset));
+    state.sunAlts = state.epochs.map((e) => sunAltitude(e, place.lat, place.lon));
+    state.nowIndex = currentIndex(state.epochs, Date.now());
+    const kept = keepTime && !following ? reindexTime(oldTimes, time, state.t) : null;
 
     el.slider.max = time.length - 1;
     for (const control of [el.slider, el.play, el.now]) control.disabled = false;
@@ -165,8 +178,67 @@
     outline = L.rectangle(data.grid.bounds, { color: '#8fc7ff', weight: 1, dashArray: '4 4', fill: false, interactive: false }).addTo(map);
 
     renderWindows();
-    setTime(state.nowIndex);
+    renderFetched();
+    setTime(kept ?? state.nowIndex);
   }
+
+  // --- 自動更新 ---
+  // 再生も時刻の操作もせずに「現在」を見ているか。このときだけ、時刻の進みに合わせて表示を進める。
+  function isFollowingNow() {
+    return Boolean(state.center) && !state.timer && Math.round(state.t) === state.nowIndex;
+  }
+
+  // 「現在」の位置を時刻の進みに合わせる(通信なし)。
+  function tick() {
+    if (!state.center) return;
+    const next = currentIndex(state.epochs, Date.now());
+    if (next === state.nowIndex) return;
+    const following = isFollowingNow();
+    state.nowIndex = next;
+    renderWindows(); // ねらい目は「現在」から先が対象
+    if (following) setTime(next);
+  }
+
+  // 取得から MAX_AGE_MS 以上たっていれば、表示中のタブでだけ裏で取り直す。
+  // 失敗したら今のデータを残し、古いことを表示する。
+  async function refreshIfStale() {
+    const place = state.place;
+    if (document.hidden || state.refreshing || !state.center || state.loadedPlace !== place) return;
+    if (Date.now() - state.fetchedAt < MAX_AGE_MS) return;
+    state.refreshing = true;
+    try {
+      const data = await fetchForecast(place);
+      if (state.place === place && state.loadedPlace === place) apply(place, data, { keepTime: true });
+    } catch (err) {
+      console.error(err);
+      if (state.loadedPlace === place) state.refreshFailed = true;
+    } finally {
+      state.refreshing = false;
+      renderFetched();
+    }
+  }
+
+  function renderFetched() {
+    if (!state.fetchedAt) { el.fetched.hidden = true; return; }
+    const at = new Date(state.fetchedAt);
+    const sameDay = at.toDateString() === new Date().toDateString();
+    const clock = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')}`;
+    const when = sameDay ? clock : `${at.getMonth() + 1}/${at.getDate()} ${clock}`;
+    el.fetched.textContent = state.refreshFailed
+      ? `${when} 取得の予報です。更新できませんでした。`
+      : `${when} 取得`;
+    el.fetched.classList.toggle('stale', state.refreshFailed);
+    el.fetched.hidden = false;
+  }
+
+  setInterval(tick, 60 * 1000);
+  setInterval(refreshIfStale, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    tick();
+    refreshIfStale();
+  });
+  window.addEventListener('online', refreshIfStale);
 
   // --- 描画 ---
   function setTime(t) {

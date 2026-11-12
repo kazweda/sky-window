@@ -78,6 +78,20 @@
   const localToEpoch = (time, utcOffsetSeconds) =>
     Date.parse(`${time}:00Z`) - utcOffsetSeconds * 1000;
 
+  // 1時間ごとの時刻(エポックミリ秒)のうち、nowMs を含む時刻の番号。予報の範囲外なら端に寄せる。
+  function currentIndex(epochs, nowMs) {
+    if (!epochs.length) return 0;
+    return clamp(Math.floor((nowMs - epochs[0]) / 3600000), 0, epochs.length - 1);
+  }
+
+  // 予報を取り直したとき、見ていた時刻が新しい時刻軸の何番目かを返す。見つからなければ null。
+  // 時刻軸は「今日の0時」から始まるので、日付が変わると同じ時刻でも番号がずれる。
+  function reindexTime(oldTimes, newTimes, t) {
+    const i = Math.round(t);
+    const j = newTimes.indexOf(oldTimes[i]);
+    return j < 0 ? null : j + (t - i);
+  }
+
   // 太陽高度(度)の近似計算。観測可能な時間帯の判定に十分な精度。
   function sunAltitude(epochMs, lat, lon) {
     const d = epochMs / 86400000 + 2440587.5 - 2451545.0;
@@ -124,6 +138,6 @@
 
   root.Forecast = {
     buildGrid, valueAt, sampleGrid, windFlow, compassName, localToEpoch,
-    sunAltitude, findObservingWindows, wrapLon,
+    sunAltitude, findObservingWindows, wrapLon, currentIndex, reindexTime,
   };
 })(globalThis);
