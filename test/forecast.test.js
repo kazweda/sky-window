@@ -58,24 +58,104 @@ test('太陽高度はAPIの日の出・日の入り時刻と整合する', () =>
   assert.ok(at('2026-11-07T23:59') < -18);
 });
 
-test('観測候補は夜ごとに最長の晴れ間を選び、日をまたいでも同じ夜として扱う', () => {
-  const times = ['2026-11-07T20:00', '2026-11-07T21:00', '2026-11-07T22:00', '2026-11-07T23:00',
-    '2026-11-08T00:00', '2026-11-08T01:00', '2026-11-08T12:00', '2026-11-08T20:00'];
-  const clouds = [10, 90, 20, 20, 20, 90, 0, 5];
-  const sunAlts = [-30, -30, -30, -30, -30, -30, 40, -30];
-  const w = F.findObservingWindows({ times, clouds, sunAlts });
-  assert.equal(w.length, 2);
-  assert.deepEqual([w[0].night, w[0].start, w[0].end, w[0].hours], ['2026-11-07', 2, 4, 3]);
-  assert.deepEqual([w[1].night, w[1].start], ['2026-11-08', 7]);
+// 国立天文台 暦計算室「日の出入り@東京」(35.6581N 139.7414E、標高0m)の2026年の値。
+const TOKYO = { lat: 35.6581, lon: 139.7414 };
+const NAOJ_TOKYO = [
+  ['2026-06-01', '04:27', '18:51'],
+  ['2026-06-21', '04:25', '19:00'],
+  ['2026-11-01', '06:02', '16:46'],
+  ['2026-11-13', '06:14', '16:36'],
+  ['2026-11-30', '06:31', '16:28'],
+];
+const jst = (s) => F.localToEpoch(s, 32400);
+const sunAt = ({ lat, lon }) => (ms) => F.sunAltitude(ms, lat, lon);
+
+test('日の出・日の入りの時刻は、国立天文台の値と2分以内で一致する', () => {
+  for (const [date, rise, set] of NAOJ_TOKYO) {
+    const xs = F.findCrossings(sunAt(TOKYO), jst(`${date}T00:00`), jst(`${date}T23:59`), -0.83);
+    assert.equal(xs.length, 2, date);
+    assert.equal(xs[0].rising, true);
+    assert.equal(xs[1].rising, false);
+    assert.ok(Math.abs(xs[0].ms - jst(`${date}T${rise}`)) <= 2 * 60000, `${date} 日の出`);
+    assert.ok(Math.abs(xs[1].ms - jst(`${date}T${set}`)) <= 2 * 60000, `${date} 日の入り`);
+  }
 });
 
-test('観測候補は昼と欠測を除外し、開始位置を守る', () => {
-  const times = ['2026-11-07T20:00', '2026-11-07T21:00', '2026-11-07T22:00'];
-  const sunAlts = [-30, -30, 10];
-  assert.deepEqual(F.findObservingWindows({ times, clouds: [null, 50, 0], sunAlts }), []);
-  const w = F.findObservingWindows({ times, clouds: [0, 0, 0], sunAlts, fromIndex: 1 });
-  assert.equal(w[0].start, 1);
-  assert.equal(w[0].hours, 1);
+test('天文薄明の境目は、太陽高度がちょうど −18° になる時刻になる', () => {
+  const f = sunAt(TOKYO);
+  const xs = F.findCrossings(f, jst('2026-11-13T12:00'), jst('2026-11-14T12:00'), -18);
+  assert.equal(xs.length, 2);
+  for (const x of xs) assert.ok(Math.abs(f(x.ms) + 18) < 0.01);
+  // 日の入り(16:36)のおよそ1時間半後に暗くなり、日の出のおよそ1時間半前に明るくなりはじめる
+  assert.ok(xs[0].ms > jst('2026-11-13T17:45') && xs[0].ms < jst('2026-11-13T18:15'));
+  assert.ok(xs[1].ms > jst('2026-11-14T04:30') && xs[1].ms < jst('2026-11-14T05:00'));
+});
+
+test('暗い時間帯は範囲の端で切り、白夜では空、極夜では範囲全体になる', () => {
+  const from = jst('2026-11-13T12:00');
+  const to = jst('2026-11-15T12:00');
+  const dark = F.intervalsBelow(sunAt(TOKYO), from, to, -18);
+  assert.equal(dark.length, 2);
+  assert.ok(dark.every((d) => d.start < d.end && d.end - d.start > 10 * 3600000));
+
+  const midnight = F.intervalsBelow(sunAt(TOKYO), jst('2026-11-14T00:00'), jst('2026-11-14T12:00'), -18);
+  assert.equal(midnight[0].start, jst('2026-11-14T00:00'));
+
+  const juneFrom = Date.UTC(2026, 5, 20);
+  const juneTo = Date.UTC(2026, 5, 22);
+  assert.deepEqual(F.intervalsBelow(sunAt({ lat: 70, lon: 20 }), juneFrom, juneTo, -0.83), []);
+  const decFrom = Date.UTC(2026, 11, 20);
+  const decTo = Date.UTC(2026, 11, 22);
+  assert.deepEqual(F.intervalsBelow(sunAt({ lat: 89, lon: 0 }), decFrom, decTo, -18), [{ start: decFrom, end: decTo }]);
+});
+
+// 1時間ごとの時刻と、そのエポックミリ秒(JST)。
+const hours = (fromIso, n) => {
+  const start = jst(fromIso);
+  const epochs = Array.from({ length: n }, (_, i) => start + i * 3600000);
+  const times = epochs.map((e) => new Date(e + 32400000).toISOString().slice(0, 16));
+  return { times, epochs };
+};
+
+test('観測のねらい目は、天文薄明の時刻で分単位に区切る', () => {
+  const { times, epochs } = hours('2026-11-13T17:00', 13); // 17:00〜翌5:00
+  const dark = [{ start: jst('2026-11-13T18:47'), end: jst('2026-11-14T04:20') }];
+  const w = F.findObservingWindows({ times, epochs, clouds: Array(13).fill(10), dark });
+  assert.equal(w.length, 1);
+  assert.equal(w[0].night, '2026-11-13');
+  assert.equal(w[0].start, jst('2026-11-13T18:47'));
+  assert.equal(w[0].end, jst('2026-11-14T04:20'));
+  assert.equal(w[0].avgCloud, 10);
+});
+
+test('観測のねらい目は、雲の多い時刻の前後30分で区切り、夜ごとに最長の晴れ間を選ぶ', () => {
+  const { times, epochs } = hours('2026-11-13T19:00', 30); // 19:00〜翌々0:00
+  const clouds = Array(30).fill(10);
+  clouds[2] = 90; // 21:00 は曇り
+  clouds[6] = null; // 1:00 は欠測
+  const dark = [
+    { start: jst('2026-11-13T18:47'), end: jst('2026-11-14T04:20') },
+    { start: jst('2026-11-14T18:48'), end: jst('2026-11-15T04:21') },
+  ];
+  const w = F.findObservingWindows({ times, epochs, clouds, dark });
+  assert.equal(w.length, 2);
+  // 21:30〜0:30 と 1:30〜4:20 のうち、長い方を選ぶ
+  assert.equal(w[0].start, jst('2026-11-13T21:30'));
+  assert.equal(w[0].end, jst('2026-11-14T00:30'));
+  assert.equal(w[0].hours, 3);
+  assert.equal(w[1].night, '2026-11-14');
+  assert.equal(w[1].start, jst('2026-11-14T18:48'));
+  assert.equal(w[1].end, jst('2026-11-15T00:30')); // 予報の最後の時刻(0:00)の30分後まで
+});
+
+test('観測のねらい目は、昼と雲の多い時間帯を除き、開始の時刻より前を含めない', () => {
+  const { times, epochs } = hours('2026-11-13T20:00', 3);
+  const dark = [{ start: jst('2026-11-13T18:00'), end: jst('2026-11-13T21:40') }];
+  assert.deepEqual(F.findObservingWindows({ times, epochs, clouds: [null, 50, 0], dark }), []);
+  const w = F.findObservingWindows({ times, epochs, clouds: [0, 0, 0], dark, fromMs: jst('2026-11-13T21:00') });
+  assert.equal(w[0].start, jst('2026-11-13T21:00'));
+  assert.equal(w[0].end, jst('2026-11-13T21:40'));
+  assert.deepEqual(F.findObservingWindows({ times, epochs, clouds: [0, 0, 0], dark: [] }), []);
 });
 
 test('現在の時刻の番号は、時刻の進みに合わせて増え、予報の範囲に収まる', () => {
