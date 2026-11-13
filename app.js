@@ -28,7 +28,7 @@
 
   const $ = (id) => document.getElementById(id);
   const el = {
-    place: $('place'), time: $('time'), status: $('status'), total: $('total'), layers: $('layers'),
+    place: $('place'), time: $('time'), status: $('status'), statusText: $('status-text'), retry: $('retry'), total: $('total'), layers: $('layers'),
     flow: $('flow'), winds: $('winds'), windows: $('windows'), timeline: $('timeline'),
     slider: $('slider'), play: $('play'), now: $('now'),
     search: $('search'), searchInput: $('search-input'), searchResults: $('search-results'),
@@ -87,13 +87,15 @@
     selectPlace({ name: coordName(lat, lon), lat, lon, named: false });
   });
 
+  const FORECAST_UNREACHABLE = '予報データを取得できませんでした。配信元(Open-Meteo)に接続できない状態です。';
+
   // what: 何の取得に失敗したか('forecast' か 'search')。配信元に届かないときの文言を変える。
   function errorMessage(err, what) {
     if (err instanceof NetworkError) {
       if (err.offline) return 'インターネットに接続されていません。接続を確認してください。';
       return what === 'search'
         ? '地名を検索できませんでした。時間をおいてお試しください。'
-        : '予報データを取得できませんでした。配信元(Open-Meteo)に接続できない状態です。時間をおいてお試しください。';
+        : `${FORECAST_UNREACHABLE}時間をおいてお試しください。`;
     }
     if (err instanceof DataError) return err.message;
     return '表示中に問題が起きました。ページを再読み込みしてください。';
@@ -222,10 +224,47 @@
     // 連続クリックでAPIを消費しないよう少し待つ。
     clearTimeout(debounceTimer);
     if (loadController) loadController.abort();
+    cancelRetry();
     debounceTimer = setTimeout(() => load(place), 300);
   }
 
-  async function load(place) {
+  // --- 読み込みに失敗したときの取り直し ---
+  // 配信元に届かないときは、一時的な不調を見込んで1回だけ自動で取り直す。
+  // それでも失敗したら「再読み込み」ボタンを出し、押したら1分は押せないようにする。
+  // 配信元が長く止まっているときに、リクエストを増やし続けないため。
+  const AUTO_RETRY_MS = 90 * 1000;
+  const RETRY_COOLDOWN_MS = 60 * 1000;
+  const retry = { timer: null, pending: false, cooldown: null };
+
+  function cancelRetry() {
+    clearTimeout(retry.timer);
+    clearTimeout(retry.cooldown);
+    retry.timer = null;
+    retry.pending = false;
+    el.retry.disabled = false;
+  }
+
+  function runAutoRetry() {
+    retry.timer = null;
+    // 裏に回っているタブでは試さず、表に戻ったときに試す。
+    if (document.hidden) { retry.pending = true; return; }
+    retry.pending = false;
+    showStatus('雲の予報を読み込んでいます…');
+    load(state.place, 'auto');
+  }
+
+  el.retry.addEventListener('click', () => {
+    if (!state.place) return;
+    el.retry.disabled = true;
+    clearTimeout(retry.cooldown);
+    retry.cooldown = setTimeout(() => { el.retry.disabled = false; }, RETRY_COOLDOWN_MS);
+    showStatus('雲の予報を読み込んでいます…', false, { retry: true });
+    load(state.place, 'manual');
+  });
+
+  // attempt: 'first'(目的地を選んだとき)、'auto'(自動の取り直し)、'manual'(ボタン)。
+  async function load(place, attempt = 'first') {
+    if (attempt === 'first') cancelRetry();
     const controller = new AbortController();
     loadController = controller;
     try {
@@ -238,7 +277,15 @@
       if (err.name === 'AbortError') return;
       console.error(err);
       state.loadFailed = true;
-      showStatus(errorMessage(err, 'forecast'), true);
+      // オフラインは回線が戻ったときに取り直すので、配信元に届かないときだけを対象にする。
+      if (!(err instanceof NetworkError) || err.offline) {
+        showStatus(errorMessage(err, 'forecast'), true);
+      } else if (attempt === 'first') {
+        retry.timer = setTimeout(runAutoRetry, AUTO_RETRY_MS);
+        showStatus(`${FORECAST_UNREACHABLE}${clockText(new Date(Date.now() + AUTO_RETRY_MS))} にもう一度試します。`, true);
+      } else {
+        showStatus(`${FORECAST_UNREACHABLE}時間をおいて再読み込みしてください。`, true, { retry: true });
+      }
     }
   }
 
@@ -345,11 +392,13 @@
     }
   }
 
+  const clockText = (date) => `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+
   function renderFetched() {
     if (!state.fetchedAt) { el.fetched.hidden = true; return; }
     const at = new Date(state.fetchedAt);
     const sameDay = at.toDateString() === new Date().toDateString();
-    const clock = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')}`;
+    const clock = clockText(at);
     const when = sameDay ? clock : `${at.getMonth() + 1}/${at.getDate()} ${clock}`;
     const reason = { offline: 'オフラインのため', unreachable: '配信元に接続できず、' }[state.refreshFailed] ?? '';
     el.fetched.textContent = state.refreshFailed
@@ -372,6 +421,7 @@
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
+    if (retry.pending) runAutoRetry();
     tick();
     refreshIfStale();
   });
@@ -595,12 +645,17 @@
   }
 
   // --- 操作 ---
-  function showStatus(message, isError = false) {
-    el.status.textContent = message;
+  // retry: 「再読み込み」ボタンを出すか。
+  function showStatus(message, isError = false, { retry: showRetry = false } = {}) {
+    el.statusText.textContent = message;
+    el.retry.hidden = !showRetry;
     el.status.hidden = false;
     el.status.classList.toggle('error', isError);
   }
-  function hideStatus() { el.status.hidden = true; }
+  function hideStatus() {
+    el.status.hidden = true;
+    el.retry.hidden = true;
+  }
 
   function stopPlayback() {
     if (state.timer) clearInterval(state.timer);
