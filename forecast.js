@@ -108,6 +108,79 @@
     return Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(ha)) / RAD;
   }
 
+  // 月の地心での黄経・黄緯(ラジアン)と距離(地球半径)。主な摂動項を加えた簡略式で、誤差は数分角程度。
+  // 出典: Paul Schlyter "How to compute planetary positions"。
+  function moonEcliptic(epochMs) {
+    const d = epochMs / 86400000 + 2440587.5 - 2451543.5;
+    const N = (125.1228 - 0.0529538083 * d) * RAD;
+    const inc = 5.1454 * RAD;
+    const w = (318.0634 + 0.1643573223 * d) * RAD;
+    const e = 0.0549;
+    const M = (115.3654 + 13.0649929509 * d) * RAD;
+    let E = M + e * Math.sin(M) * (1 + e * Math.cos(M));
+    for (let k = 0; k < 3; k++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    const xv = 60.2666 * (Math.cos(E) - e);
+    const yv = 60.2666 * Math.sqrt(1 - e * e) * Math.sin(E);
+    const v = Math.atan2(yv, xv);
+    let r = Math.hypot(xv, yv);
+    const xh = r * (Math.cos(N) * Math.cos(v + w) - Math.sin(N) * Math.sin(v + w) * Math.cos(inc));
+    const yh = r * (Math.sin(N) * Math.cos(v + w) + Math.cos(N) * Math.sin(v + w) * Math.cos(inc));
+    const zh = r * Math.sin(v + w) * Math.sin(inc);
+    let lon = Math.atan2(yh, xh) / RAD;
+    let lat = Math.atan2(zh, Math.hypot(xh, yh)) / RAD;
+
+    const Ms = (356.047 + 0.9856002585 * d) * RAD;
+    const Ls = Ms + (282.9404 + 4.70935e-5 * d) * RAD;
+    const Lm = M + w + N;
+    const D = Lm - Ls;
+    const F = Lm - N;
+    const s = Math.sin;
+    lon += -1.274 * s(M - 2 * D) + 0.658 * s(2 * D) - 0.186 * s(Ms) - 0.059 * s(2 * M - 2 * D)
+      - 0.057 * s(M - 2 * D + Ms) + 0.053 * s(M + 2 * D) + 0.046 * s(2 * D - Ms) + 0.041 * s(M - Ms)
+      - 0.035 * s(D) - 0.031 * s(M + Ms) - 0.015 * s(2 * F - 2 * D) + 0.011 * s(M - 4 * D);
+    lat += -0.173 * s(F - 2 * D) - 0.055 * s(M - F - 2 * D) - 0.046 * s(M + F - 2 * D)
+      + 0.033 * s(F + 2 * D) + 0.017 * s(2 * M + F);
+    r += -0.58 * Math.cos(M - 2 * D) - 0.46 * Math.cos(2 * D);
+    return { lon: lon * RAD, lat: lat * RAD, r, sunLon: Ls + 1.915 * RAD * s(Ms) + 0.02 * RAD * s(2 * Ms) };
+  }
+
+  // 月の高度(度)。地表から見た値(視差を補正した値)で、大気差は含まない。
+  function moonAltitude(epochMs, lat, lon) {
+    const m = moonEcliptic(epochMs);
+    const d = epochMs / 86400000 + 2440587.5 - 2451545.0;
+    const ecl = (23.439 - 0.00000036 * d) * RAD;
+    const ra = Math.atan2(
+      Math.sin(m.lon) * Math.cos(ecl) - Math.tan(m.lat) * Math.sin(ecl), Math.cos(m.lon));
+    const dec = Math.asin(Math.sin(m.lat) * Math.cos(ecl) + Math.cos(m.lat) * Math.sin(ecl) * Math.sin(m.lon));
+    const gmstDeg = (18.697374558 + 24.06570982441908 * d) * 15;
+    const ha = (gmstDeg + lon) * RAD - ra;
+    const phi = lat * RAD;
+    const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(ha));
+    return (alt - Math.asin(1 / m.r) * Math.cos(alt)) / RAD;
+  }
+
+  // 月の輝面比(光っている割合、0〜1)。太陽と月の離角から求める。
+  function moonIllumination(epochMs) {
+    const m = moonEcliptic(epochMs);
+    const cosElong = Math.cos(m.lat) * Math.cos(m.lon - m.sunLon);
+    return (1 - cosElong) / 2;
+  }
+
+  // 時間帯 [start, end] の月の条件。moonDown は月が沈んでいる時間帯(intervalsBelow の結果)。
+  // 'none': ずっと沈んでいる / 'up': ずっと出ている /
+  // 'partial': 一部だけ沈んでいる。沈んでいる最も長い時間帯を from〜to で返す(端と同じなら null)。
+  function moonCondition({ start, end }, moonDown) {
+    let best = null;
+    for (const d of moonDown) {
+      const a = Math.max(start, d.start);
+      const b = Math.min(end, d.end);
+      if (b - a >= 60000 && (!best || b - a > best.to - best.from)) best = { from: a, to: b };
+    }
+    if (!best) return { kind: 'up' };
+    if (best.from <= start && best.to >= end) return { kind: 'none' };
+    return { kind: 'partial', from: best.from > start ? best.from : null, to: best.to < end ? best.to : null };
+  }
+
   // 高度 f(ms) が level を横切る時刻を返す。step ごとの値で境目をはさむ区間を見つけ、
   // 二分法で1秒まで詰める。step の間に2回横切る(すぐ戻る)場合は見逃す。
   // 太陽にも月にも使えるよう、高度を返す関数を受け取る。
@@ -195,6 +268,6 @@
 
   root.Forecast = {
     buildGrid, valueAt, sampleGrid, windFlow, compassName, localToEpoch,
-    sunAltitude, findCrossings, intervalsBelow, findObservingWindows, wrapLon, currentIndex, reindexTime,
+    sunAltitude, moonAltitude, moonIllumination, moonCondition, findCrossings, intervalsBelow, findObservingWindows, wrapLon, currentIndex, reindexTime,
   };
 })(globalThis);
