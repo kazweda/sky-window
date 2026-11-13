@@ -88,28 +88,63 @@
     selectPlace({ name: coordName(lat, lon), lat, lon, named: false });
   });
 
-  function errorMessage(err) {
-    if (err instanceof NetworkError || err instanceof DataError) return err.message;
+  // what: 何の取得に失敗したか('forecast' か 'search')。配信元に届かないときの文言を変える。
+  function errorMessage(err, what) {
+    if (err instanceof NetworkError) {
+      if (err.offline) return 'インターネットに接続されていません。接続を確認してください。';
+      return what === 'search'
+        ? '地名を検索できませんでした。時間をおいてお試しください。'
+        : '予報データを取得できませんでした。配信元(Open-Meteo)に接続できない状態です。時間をおいてお試しください。';
+    }
+    if (err instanceof DataError) return err.message;
     return '表示中に問題が起きました。ページを再読み込みしてください。';
   }
 
   // --- データ取得 ---
   // 通信の失敗だけを NetworkError にする。プログラムの不具合(TypeError など)を通信エラーと取り違えないため。
-  class NetworkError extends Error {}
+  // offline: 端末がオフラインか。そうでなければ、配信元に届かないか応答がない。
+  class NetworkError extends Error {
+    constructor(offline) {
+      super(offline ? 'offline' : 'unreachable');
+      this.offline = offline;
+    }
+  }
   // 画面に出してよい、想定どおりのエラー
   class DataError extends Error {}
 
+  // 配信元が接続を受けたまま応答しないことがあるため、一定時間で打ち切る。
+  const FETCH_TIMEOUT_MS = 20 * 1000;
+
+  // signal で中断されたときだけ AbortError を投げる。時間切れは通信の失敗として扱う。
   async function fetchJson(url, signal) {
-    let res;
-    try {
-      res = await fetch(url, { signal });
-    } catch (err) {
-      if (err.name === 'AbortError') throw err;
-      throw new NetworkError('通信できませんでした。接続を確認してください。');
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', onAbort, { once: true });
     }
-    if (res.status === 429) throw new DataError('リクエストが多すぎます。少し待ってからお試しください。');
-    if (!res.ok) throw new DataError(`データを取得できませんでした(HTTP ${res.status})。`);
-    return res.json();
+    const timer = setTimeout(onAbort, FETCH_TIMEOUT_MS);
+    try {
+      let res;
+      try {
+        res = await fetch(url, { signal: controller.signal });
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        throw new NetworkError(navigator.onLine === false);
+      }
+      if (res.status === 429) throw new DataError('リクエストが多すぎます。少し待ってからお試しください。');
+      if (!res.ok) throw new DataError(`データを取得できませんでした(HTTP ${res.status})。時間をおいてお試しください。`);
+      try {
+        return await res.json();
+      } catch (err) {
+        if (signal?.aborted) throw err;
+        if (controller.signal.aborted) throw new NetworkError(navigator.onLine === false);
+        throw new DataError('データの形式が想定と異なります。');
+      }
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    }
   }
 
   function forecastUrl(latitude, longitude, hourly, timezone) {
@@ -184,10 +219,12 @@
       if (controller.signal.aborted) return;
       apply(place, data);
       hideStatus();
+      state.loadFailed = false;
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error(err);
-      showStatus(errorMessage(err), true);
+      state.loadFailed = true;
+      showStatus(errorMessage(err, 'forecast'), true);
     }
   }
 
@@ -268,7 +305,7 @@
       if (state.place === place && state.loadedPlace === place) apply(place, data, { keepTime: true });
     } catch (err) {
       console.error(err);
-      if (state.loadedPlace === place) state.refreshFailed = true;
+      if (state.loadedPlace === place) state.refreshFailed = !(err instanceof NetworkError) ? 'error' : err.offline ? 'offline' : 'unreachable';
     } finally {
       state.refreshing = false;
       renderFetched();
@@ -281,15 +318,25 @@
     const sameDay = at.toDateString() === new Date().toDateString();
     const clock = `${at.getHours()}:${String(at.getMinutes()).padStart(2, '0')}`;
     const when = sameDay ? clock : `${at.getMonth() + 1}/${at.getDate()} ${clock}`;
+    const reason = { offline: 'オフラインのため', unreachable: '配信元に接続できず、' }[state.refreshFailed] ?? '';
     el.fetched.textContent = state.refreshFailed
-      ? `${when} 取得の予報です。更新できませんでした。`
+      ? `${when} 取得の予報です。${reason}更新できませんでした。`
       : `${when} 取得`;
-    el.fetched.classList.toggle('stale', state.refreshFailed);
+    el.fetched.classList.toggle('stale', Boolean(state.refreshFailed));
     el.fetched.hidden = false;
   }
 
   setInterval(tick, 60 * 1000);
   setInterval(refreshIfStale, 5 * 60 * 1000);
+  // オフラインから戻ったら、読み込めなかった予報を取り直す。
+  window.addEventListener('online', () => {
+    if (state.loadFailed && state.place) {
+      showStatus('雲の予報を読み込んでいます…');
+      load(state.place);
+    } else {
+      refreshIfStale();
+    }
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     tick();
@@ -614,7 +661,7 @@
     } catch (err) {
       console.error(err);
       if (seq !== searchSeq) return;
-      addEmpty(errorMessage(err));
+      addEmpty(errorMessage(err, 'search'));
     }
   });
 
