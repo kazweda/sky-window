@@ -11,7 +11,8 @@
 
   // 目的地を中心とした格子を、北西から南東へ行優先で返す。
   // 経度方向の幅は緯度で補正し、地図上でおおよそ正方形にする。
-  function buildGrid(lat, lon, size = 9, latRadius = 1.2) {
+  // Open-Meteo は1地点ごとに API の利用回数を数えるため、点の数(size×size)を抑えている。
+  function buildGrid(lat, lon, size = 7, latRadius = 1.2) {
     const lonRadius = latRadius / Math.max(Math.cos(lat * RAD), 0.2);
     const north = clamp(lat + latRadius, -85, 85);
     const south = clamp(lat - latRadius, -85, 85);

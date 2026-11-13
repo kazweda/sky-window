@@ -13,6 +13,15 @@ test('格子は北西から南東へ並び、中心が目的地になる', () =>
   assert.ok(g.points[80].lon > 138);
 });
 
+test('既定の格子は7×7で、南北 ±1.2° の範囲を約0.4°間隔で覆う', () => {
+  const g = F.buildGrid(36, 138);
+  assert.equal(g.size, 7);
+  assert.equal(g.points.length, 49);
+  assert.deepEqual(g.points[24], { lat: 36, lon: 138 });
+  assert.equal(g.points[0].lat, 37.2);
+  assert.ok(Math.abs(g.points[7].lat - 36.8) < 1e-9);
+});
+
 test('日付変更線をまたぐ格子は経度が折り返される', () => {
   const g = F.buildGrid(0, 179.5, 3, 1);
   for (const p of g.points) assert.ok(p.lon >= -180 && p.lon <= 180);
