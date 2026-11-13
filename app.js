@@ -41,7 +41,6 @@
     t: 0, nowIndex: 0, epochs: [], sky: [], dark: [], moonDown: [], moonUp: [], timer: null,
     fetchedAt: 0, refreshing: false, refreshFailed: false,
   };
-  const cache = new Map();
   let loadController = null;
   let debounceTimer = null;
 
@@ -155,27 +154,42 @@
     return `${API}?${params}`;
   }
 
-  async function fetchForecast(place, signal) {
-    const key = `${place.lat.toFixed(2)},${place.lon.toFixed(2)}`;
-    const cached = cache.get(key);
-    if (cached && Date.now() - cached.at < MAX_AGE_MS) return cached;
+  // 目的地(1地点)と周辺の雲(格子の49地点)は別々にキャッシュする。
+  // 格子は目的地が近ければ共通なので、目的地を少し動かしても取得するのは目的地の1地点だけで済む。
+  // 返す at は古いほうの取得時刻。古くなったほうだけを取り直す。
+  const centerCache = new Map();
+  const gridCache = new Map();
+  const isFresh = (entry) => entry && Date.now() - entry.at < MAX_AGE_MS;
 
-    const center = await fetchJson(forecastUrl(place.lat, place.lon, HOURLY_VARS, 'auto'), signal);
-    // 全地点の時刻軸を揃えるため、中心地点のタイムゾーンで周辺を取得する。
-    const grid = buildGrid(place.lat, place.lon);
-    const list = await fetchJson(forecastUrl(
-      grid.points.map((p) => p.lat).join(','),
-      grid.points.map((p) => p.lon).join(','),
-      ['cloud_cover'], center.timezone,
-    ), signal);
-    const length = center.hourly.time.length;
-    if (!Array.isArray(list) || list.length !== grid.points.length || list.some((p) => p.hourly.time.length !== length)) {
-      throw new DataError('周辺の雲データの形式が想定と異なります。');
+  async function fetchForecast(place, signal) {
+    const centerKey = `${place.lat.toFixed(2)},${place.lon.toFixed(2)}`;
+    let centerEntry = centerCache.get(centerKey);
+    if (!isFresh(centerEntry)) {
+      centerEntry = { data: await fetchJson(forecastUrl(place.lat, place.lon, HOURLY_VARS, 'auto'), signal), at: Date.now() };
+      centerCache.set(centerKey, centerEntry);
     }
-    const gridValues = list.map((p) => p.hourly.cloud_cover);
-    const entry = { center, grid, gridValues, at: Date.now() };
-    cache.set(key, entry);
-    return entry;
+    const center = centerEntry.data;
+    const { time } = center.hourly;
+
+    // 全地点の時刻軸を揃えるため、目的地のタイムゾーンで周辺を取得する。
+    // 日付が変わると時刻軸の始まりがずれるので、目的地と揃っていなければ取り直す。
+    const grid = buildGrid(place.lat, place.lon);
+    const gridKey = `${grid.key},${center.timezone}`;
+    let gridEntry = gridCache.get(gridKey);
+    if (!isFresh(gridEntry) || gridEntry.time[0] !== time[0] || gridEntry.time.length !== time.length) {
+      const list = await fetchJson(forecastUrl(
+        grid.points.map((p) => p.lat).join(','),
+        grid.points.map((p) => p.lon).join(','),
+        ['cloud_cover'], center.timezone,
+      ), signal);
+      if (!Array.isArray(list) || list.length !== grid.points.length
+        || list.some((p) => p.hourly.time.length !== time.length || p.hourly.time[0] !== time[0])) {
+        throw new DataError('周辺の雲データの形式が想定と異なります。');
+      }
+      gridEntry = { values: list.map((p) => p.hourly.cloud_cover), time: list[0].hourly.time, at: Date.now() };
+      gridCache.set(gridKey, gridEntry);
+    }
+    return { center, grid, gridValues: gridEntry.values, at: Math.min(centerEntry.at, gridEntry.at) };
   }
 
   // --- 目的地の選択 ---
