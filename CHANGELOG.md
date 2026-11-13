@@ -4,6 +4,10 @@ Sky Window の利用者に関わる変更を記録します。書き方は [Keep
 
 ## [Unreleased]
 
+### 追加
+
+- 訪問数・国・流入元を知るために、Cloudflare Web Analytics による匿名のアクセス計測を入れました。Cookie は使いません。
+
 ## [0.4.0] - 2026-11-13
 
 ### 追加
