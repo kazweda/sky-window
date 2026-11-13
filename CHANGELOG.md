@@ -4,14 +4,16 @@ Sky Window の利用者に関わる変更を記録します。書き方は [Keep
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-13
+
 ### 追加
 
 - 予報の配信元(Open-Meteo)に接続できなかったときに、「再読み込み」ボタンを表示するようにしました。ボタンは押してから1分間は押せません。配信元が長く止まっているときに、リクエストを増やし続けないためです。
 
 ### 変更
 
-- 目的地を近くに変えたときは、周辺の雲を取り直さず、目的地の予報だけを取得するようにしました。予報の配信元(Open-Meteo)の利用回数が、1回の選択あたり約50回分から1回分に減ります。そのため雲を表示する範囲の中心は、目的地から最大で約20kmずれます。
 - 地図に重ねる雲を、一番濃いところでも少し透けるようにしました。雲量100%の場所でも、地名や道路が読めます。
+- 目的地を近くに変えたときは、周辺の雲を取り直さず、目的地の予報だけを取得するようにしました。予報の配信元(Open-Meteo)の利用回数が、1回の選択あたり約50回分から1回分に減ります。そのため雲を表示する範囲の中心は、目的地から最大で約20kmずれます。
 
 ## [0.3.0] - 2026-11-13
 
@@ -63,7 +65,8 @@ Sky Window の利用者に関わる変更を記録します。書き方は [Keep
 - Buy Me a Coffee へのリンクを置きました。
 - 画面の下部に、版の番号と更新履歴へのリンクを表示しました。
 
-[Unreleased]: https://github.com/kazweda/sky-window/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kazweda/sky-window/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kazweda/sky-window/releases/tag/v0.4.0
 [0.3.0]: https://github.com/kazweda/sky-window/releases/tag/v0.3.0
 [0.2.0]: https://github.com/kazweda/sky-window/releases/tag/v0.2.0
 [0.1.0]: https://github.com/kazweda/sky-window/releases/tag/v0.1.0
