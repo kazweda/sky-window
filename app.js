@@ -229,42 +229,27 @@
   }
 
   // --- 読み込みに失敗したときの取り直し ---
-  // 配信元に届かないときは、一時的な不調を見込んで1回だけ自動で取り直す。
-  // それでも失敗したら「再読み込み」ボタンを出し、押したら1分は押せないようにする。
-  // 配信元が長く止まっているときに、リクエストを増やし続けないため。
-  const AUTO_RETRY_MS = 90 * 1000;
+  // 配信元に届かないときは「再読み込み」ボタンを出す。自動では取り直さない。
+  // 配信元が長く止まっていることがあり、見ていない人の分までリクエストを出さないため。
+  // 押したら1分は押せないようにし、リクエストを1分に1回までにする。
   const RETRY_COOLDOWN_MS = 60 * 1000;
-  const retry = { timer: null, pending: false, cooldown: null };
+  let retryCooldown = null;
 
   function cancelRetry() {
-    clearTimeout(retry.timer);
-    clearTimeout(retry.cooldown);
-    retry.timer = null;
-    retry.pending = false;
+    clearTimeout(retryCooldown);
     el.retry.disabled = false;
-  }
-
-  function runAutoRetry() {
-    retry.timer = null;
-    // 裏に回っているタブでは試さず、表に戻ったときに試す。
-    if (document.hidden) { retry.pending = true; return; }
-    retry.pending = false;
-    showStatus('雲の予報を読み込んでいます…');
-    load(state.place, 'auto');
   }
 
   el.retry.addEventListener('click', () => {
     if (!state.place) return;
     el.retry.disabled = true;
-    clearTimeout(retry.cooldown);
-    retry.cooldown = setTimeout(() => { el.retry.disabled = false; }, RETRY_COOLDOWN_MS);
+    clearTimeout(retryCooldown);
+    retryCooldown = setTimeout(() => { el.retry.disabled = false; }, RETRY_COOLDOWN_MS);
     showStatus('雲の予報を読み込んでいます…', false, { retry: true });
-    load(state.place, 'manual');
+    load(state.place);
   });
 
-  // attempt: 'first'(目的地を選んだとき)、'auto'(自動の取り直し)、'manual'(ボタン)。
-  async function load(place, attempt = 'first') {
-    if (attempt === 'first') cancelRetry();
+  async function load(place) {
     const controller = new AbortController();
     loadController = controller;
     try {
@@ -277,14 +262,11 @@
       if (err.name === 'AbortError') return;
       console.error(err);
       state.loadFailed = true;
-      // オフラインは回線が戻ったときに取り直すので、配信元に届かないときだけを対象にする。
-      if (!(err instanceof NetworkError) || err.offline) {
-        showStatus(errorMessage(err, 'forecast'), true);
-      } else if (attempt === 'first') {
-        retry.timer = setTimeout(runAutoRetry, AUTO_RETRY_MS);
-        showStatus(`${FORECAST_UNREACHABLE}${clockText(new Date(Date.now() + AUTO_RETRY_MS))} にもう一度試します。`, true);
+      // オフラインは回線が戻ったときに取り直すので、配信元に届かないときだけボタンを出す。
+      if (err instanceof NetworkError && !err.offline) {
+        showStatus(`${FORECAST_UNREACHABLE}少し待ってから再読み込みしてください。`, true, { retry: true });
       } else {
-        showStatus(`${FORECAST_UNREACHABLE}時間をおいて再読み込みしてください。`, true, { retry: true });
+        showStatus(errorMessage(err, 'forecast'), true);
       }
     }
   }
@@ -421,7 +403,6 @@
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
-    if (retry.pending) runAutoRetry();
     tick();
     refreshIfStale();
   });
