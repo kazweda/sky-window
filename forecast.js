@@ -107,37 +107,93 @@
     return Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(ha)) / RAD;
   }
 
-  // 正午で区切った「夜」ごとに、暗くて雲の少ない連続時間のうち最良のものを返す。
-  function findObservingWindows({ times, clouds, sunAlts, fromIndex = 0, maxCloud = 30, darkBelow = -18 }) {
-    const runs = [];
-    let run = null;
-    for (let i = fromIndex; i < times.length; i++) {
-      const ok = clouds[i] != null && clouds[i] <= maxCloud && sunAlts[i] < darkBelow;
-      if (ok) {
-        if (!run) run = { start: i, end: i, sum: 0 };
-        run.end = i;
-        run.sum += clouds[i];
-      } else if (run) {
-        runs.push(run);
-        run = null;
+  // 高度 f(ms) が level を横切る時刻を返す。step ごとの値で境目をはさむ区間を見つけ、
+  // 二分法で1秒まで詰める。step の間に2回横切る(すぐ戻る)場合は見逃す。
+  // 太陽にも月にも使えるよう、高度を返す関数を受け取る。
+  function findCrossings(f, fromMs, toMs, level, stepMs = 3600000) {
+    const out = [];
+    let a = fromMs;
+    let fa = f(a) - level;
+    while (a < toMs) {
+      const b = Math.min(a + stepMs, toMs);
+      const fb = f(b) - level;
+      if ((fa < 0) !== (fb < 0)) {
+        let lo = a;
+        let hi = b;
+        let flo = fa;
+        while (hi - lo > 1000) {
+          const mid = (lo + hi) / 2;
+          const fm = f(mid) - level;
+          if ((fm < 0) === (flo < 0)) {
+            lo = mid;
+            flo = fm;
+          } else {
+            hi = mid;
+          }
+        }
+        out.push({ ms: Math.round((lo + hi) / 2), rising: fb >= 0 });
       }
+      a = b;
+      fa = fb;
     }
-    if (run) runs.push(run);
+    return out;
+  }
 
-    const best = new Map();
-    for (const r of runs) {
-      const night = new Date(Date.parse(`${times[r.start]}:00Z`) - 12 * 3600000).toISOString().slice(0, 10);
-      const item = { night, start: r.start, end: r.end, hours: r.end - r.start + 1, avgCloud: r.sum / (r.end - r.start + 1) };
-      const cur = best.get(night);
-      if (!cur || item.hours > cur.hours || (item.hours === cur.hours && item.avgCloud < cur.avgCloud)) {
-        best.set(night, item);
+  // 高度が level より下にある時間帯を [{ start, end }] で返す。範囲の端で切る。
+  // 一日中沈まなければ空、一日中昇らなければ範囲全体になる。
+  function intervalsBelow(f, fromMs, toMs, level, stepMs) {
+    const result = [];
+    let start = f(fromMs) < level ? fromMs : null;
+    for (const x of findCrossings(f, fromMs, toMs, level, stepMs)) {
+      if (!x.rising) {
+        start = x.ms;
+      } else if (start != null) {
+        result.push({ start, end: x.ms });
+        start = null;
       }
     }
-    return [...best.values()].sort((a, b) => a.start - b.start);
+    if (start != null) result.push({ start, end: toMs });
+    return result;
+  }
+
+  // 正午で区切った「夜」ごとに、暗くて雲の少ない連続時間のうち最良のものを返す。
+  // 雲量は1時間ごとの値で、各時刻の前後30分を代表するとみなす。暗さは dark(intervalsBelow の結果)で
+  // 分単位に区切る。撮影に使えない minMinutes 未満の時間帯は除く。
+  // 時刻はエポックミリ秒で、夜の日付は times(現地時刻)から求める。
+  function findObservingWindows({ times, epochs, clouds, dark, fromMs = -Infinity, maxCloud = 30, minMinutes = 30 }) {
+    const half = 1800000;
+    const offset = times.length ? Date.parse(`${times[0]}:00Z`) - epochs[0] : 0;
+    const best = new Map();
+    let i = 0;
+    while (i < times.length) {
+      if (clouds[i] == null || clouds[i] > maxCloud) { i++; continue; }
+      const a = i;
+      while (i + 1 < times.length && clouds[i + 1] != null && clouds[i + 1] <= maxCloud) i++;
+      const b = i++;
+      const runStart = Math.max(epochs[a] - half, fromMs);
+      const runEnd = epochs[b] + half;
+      for (const d of dark) {
+        const start = Math.max(runStart, d.start);
+        const end = Math.min(runEnd, d.end);
+        if (end - start < minMinutes * 60000) continue;
+        let sum = 0;
+        let count = 0;
+        for (let k = a; k <= b; k++) {
+          if (epochs[k] + half > start && epochs[k] - half < end) { sum += clouds[k]; count++; }
+        }
+        const night = new Date(start + offset - 12 * 3600000).toISOString().slice(0, 10);
+        const item = { night, start, end, hours: (end - start) / 3600000, avgCloud: sum / count };
+        const cur = best.get(night);
+        if (!cur || item.hours > cur.hours || (item.hours === cur.hours && item.avgCloud < cur.avgCloud)) {
+          best.set(night, item);
+        }
+      }
+    }
+    return [...best.values()].sort((x, y) => x.start - y.start);
   }
 
   root.Forecast = {
     buildGrid, valueAt, sampleGrid, windFlow, compassName, localToEpoch,
-    sunAltitude, findObservingWindows, wrapLon, currentIndex, reindexTime,
+    sunAltitude, findCrossings, intervalsBelow, findObservingWindows, wrapLon, currentIndex, reindexTime,
   };
 })(globalThis);

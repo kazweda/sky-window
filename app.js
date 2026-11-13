@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
+  const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findCrossings, intervalsBelow, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
   const {
     rankGsiResults, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl, parseHome, serializeHome, isSamePlace,
   } = window.Places;
@@ -38,7 +38,7 @@
 
   const state = {
     place: null, loadedPlace: null, center: null, grid: null, gridValues: null,
-    t: 0, nowIndex: 0, epochs: [], sunAlts: [], timer: null,
+    t: 0, nowIndex: 0, epochs: [], sky: [], dark: [], timer: null,
     fetchedAt: 0, refreshing: false, refreshFailed: false,
   };
   const cache = new Map();
@@ -204,7 +204,7 @@
     const { time } = data.center.hourly;
     const offset = data.center.utc_offset_seconds;
     state.epochs = time.map((t) => localToEpoch(t, offset));
-    state.sunAlts = state.epochs.map((e) => sunAltitude(e, place.lat, place.lon));
+    computeSky(place);
     state.nowIndex = currentIndex(state.epochs, Date.now());
     const kept = keepTime && !following ? reindexTime(oldTimes, time, state.t) : null;
 
@@ -219,6 +219,24 @@
     renderWindows();
     renderFetched();
     setTime(kept ?? state.nowIndex);
+  }
+
+  // 予報の期間(各時刻の前後30分を含む)について、太陽高度から昼・薄明・夜の時間帯を分単位で求める。
+  // 日の出・日の入りは −0.83°、天文薄明は −18°(観測のねらい目の判定と同じ)。
+  function computeSky(place) {
+    const from = state.epochs[0] - 1800000;
+    const to = state.epochs[state.epochs.length - 1] + 1800000;
+    const alt = (ms) => sunAltitude(ms, place.lat, place.lon);
+    state.dark = intervalsBelow(alt, from, to, -18);
+    const cuts = [from, to, ...[-0.83, -18].flatMap((level) => findCrossings(alt, from, to, level).map((x) => x.ms))]
+      .sort((a, b) => a - b);
+    state.sky = [];
+    for (let k = 0; k + 1 < cuts.length; k++) {
+      const [start, end] = [cuts[k], cuts[k + 1]];
+      if (end <= start) continue;
+      const a = alt((start + end) / 2);
+      state.sky.push({ start, end, kind: a > -0.83 ? 'day' : a > -18 ? 'twilight' : 'night' });
+    }
   }
 
   // --- 自動更新 ---
@@ -287,6 +305,12 @@
     renderReadout();
     renderOverlay();
     renderTimeline();
+  }
+
+  // エポックミリ秒を、目的地の現地時刻の文字列(分単位に丸める)にする。
+  function localIso(ms) {
+    const local = Math.round(ms / 60000) * 60000 + state.center.utc_offset_seconds * 1000;
+    return new Date(local).toISOString().slice(0, 16);
   }
 
   function formatTime(iso, withDate = true) {
@@ -418,11 +442,13 @@
       }
     });
 
-    // 空の暗さ(昼・薄明・夜)
-    for (let i = 0; i < n; i++) {
-      const alt = state.sunAlts[i];
-      ctx.fillStyle = alt > -0.83 ? '#d9b36a' : alt > -18 ? '#4a5f86' : '#10151f';
-      ctx.fillRect(xOf(i), dateH, Math.ceil(cellW), darkH);
+    // 空の暗さ(昼・薄明・夜)。各列は毎時0分を中心とした1時間で、境目は分単位の位置に描く。
+    const xAt = (ms) => xOf((ms - state.epochs[0]) / 3600000 + 0.5);
+    const SKY_COLORS = { day: '#d9b36a', twilight: '#4a5f86', night: '#10151f' };
+    for (const s of state.sky) {
+      ctx.fillStyle = SKY_COLORS[s.kind];
+      const x0 = xAt(s.start);
+      ctx.fillRect(x0, dateH, xAt(s.end) - x0, darkH);
     }
 
     // 雲量のヒートマップ
@@ -450,7 +476,8 @@
   function renderWindows() {
     const { hourly } = state.center;
     const found = findObservingWindows({
-      times: hourly.time, clouds: hourly.cloud_cover, sunAlts: state.sunAlts, fromIndex: state.nowIndex,
+      times: hourly.time, epochs: state.epochs, clouds: hourly.cloud_cover, dark: state.dark,
+      fromMs: state.epochs[state.nowIndex],
     });
     if (!found.length) {
       const li = document.createElement('li');
@@ -462,9 +489,7 @@
     el.windows.replaceChildren(...found.map((w) => {
       const li = document.createElement('li');
       const btn = document.createElement('span');
-      const start = formatTime(hourly.time[w.start]);
-      const end = formatTime(hourly.time[w.end], false);
-      btn.textContent = w.hours === 1 ? start : `${start}〜${end}`;
+      btn.textContent = `${formatTime(localIso(w.start))}〜${formatTime(localIso(w.end), false)}`;
       const small = document.createElement('small');
       small.textContent = `平均雲量 ${Math.round(w.avgCloud)}%`;
       li.append(btn, small);
