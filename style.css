@@ -70,6 +70,7 @@ h2 { margin: 22px 0 8px; font-size: 13px; font-weight: 600; color: var(--muted);
 .fetched.stale { color: var(--warn); }
 .status { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--surface); }
 .status.error { color: var(--warn); }
+.status button { display: block; margin-top: 8px; }
 
 .now { display: flex; gap: 18px; align-items: center; margin-top: 14px; }
 .total { display: flex; flex-direction: column; flex: none; width: 92px; }
