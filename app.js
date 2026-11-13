@@ -462,7 +462,8 @@
         const c = sampleGrid(frame, size, x / (OVERLAY_PX - 1), y / (OVERLAY_PX - 1));
         const p = (y * OVERLAY_PX + x) * 4;
         px[p] = px[p + 1] = px[p + 2] = 255;
-        px[p + 3] = c == null ? 0 : Math.round(235 * Math.pow(c / 100, 0.85));
+        // 雲量100%でも約78%の不透明度にとどめ、地名や道路が透けて読めるようにする。
+        px[p + 3] = c == null ? 0 : Math.round(200 * Math.pow(c / 100, 0.85));
       }
     }
     offCtx.putImageData(offImage, 0, 0);
