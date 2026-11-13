@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, findCrossings, intervalsBelow, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
+  const { buildGrid, valueAt, sampleGrid, windFlow, localToEpoch, sunAltitude, moonAltitude, moonIllumination, moonCondition, findCrossings, intervalsBelow, findObservingWindows, wrapLon, currentIndex, reindexTime } = window.Forecast;
   const {
     rankGsiResults, parsePlaceUrl, placeQuery, formatCoords, googleMapsUrl, parseHome, serializeHome, isSamePlace,
   } = window.Places;
@@ -38,7 +38,7 @@
 
   const state = {
     place: null, loadedPlace: null, center: null, grid: null, gridValues: null,
-    t: 0, nowIndex: 0, epochs: [], sky: [], dark: [], timer: null,
+    t: 0, nowIndex: 0, epochs: [], sky: [], dark: [], moonDown: [], moonUp: [], timer: null,
     fetchedAt: 0, refreshing: false, refreshFailed: false,
   };
   const cache = new Map();
@@ -274,6 +274,25 @@
       const a = alt((start + end) / 2);
       state.sky.push({ start, end, kind: a > -0.83 ? 'day' : a > -18 ? 'twilight' : 'night' });
     }
+
+    // 月の出・月の入りは、月の中心の高度 −0.83°(大気差と月の半径の分)で区切る。
+    const moon = (ms) => moonAltitude(ms, place.lat, place.lon);
+    state.moonDown = intervalsBelow(moon, from, to, -0.83);
+    state.moonUp = [];
+    let cursor = from;
+    for (const d of [...state.moonDown, { start: to, end: to }]) {
+      if (d.start > cursor) state.moonUp.push({ start: cursor, end: d.start });
+      cursor = d.end;
+    }
+  }
+
+  // 観測のねらい目に添える月の条件。
+  function moonLabel(w) {
+    const c = moonCondition(w, state.moonDown);
+    const clock = (ms) => formatTime(localIso(ms), false);
+    if (c.kind === 'none') return '月なし';
+    if (c.kind === 'up') return `月あり(輝面比 ${Math.round(moonIllumination((w.start + w.end) / 2) * 100)}%)`;
+    return `月なし ${c.from ? clock(c.from) : ''}〜${c.to ? clock(c.to) : ''}`;
   }
 
   // --- 自動更新 ---
@@ -468,13 +487,15 @@
     const cellW = (W - LABEL_W) / n;
     const dateH = 18;
     const darkH = 8;
+    const moonH = 5;
     const rows = [
       { label: '全体', key: 'cloud_cover' },
       { label: '上層', key: 'cloud_cover_high' },
       { label: '中層', key: 'cloud_cover_mid' },
       { label: '下層', key: 'cloud_cover_low' },
     ];
-    const rowH = (H - dateH - darkH - 6) / rows.length;
+    const bandsH = darkH + 2 + moonH + 6;
+    const rowH = (H - dateH - bandsH) / rows.length;
     const xOf = (i) => LABEL_W + i * cellW;
 
     ctx.font = '11px system-ui, sans-serif';
@@ -498,9 +519,21 @@
       ctx.fillRect(x0, dateH, xAt(s.end) - x0, darkH);
     }
 
+    // 月が出ている時間。輝面比が大きいほど明るく塗る(30分ごとに求める)。
+    const moonY = dateH + darkH + 2;
+    for (const u of state.moonUp) {
+      for (let t = u.start; t < u.end; t += 1800000) {
+        const t1 = Math.min(t + 1800000, u.end);
+        const k = moonIllumination((t + t1) / 2);
+        ctx.fillStyle = `rgb(232 228 200 / ${(0.2 + 0.8 * k).toFixed(2)})`;
+        const x0 = xAt(t);
+        ctx.fillRect(x0, moonY, xAt(t1) - x0, moonH);
+      }
+    }
+
     // 雲量のヒートマップ
     rows.forEach((row, r) => {
-      const y = dateH + darkH + 6 + r * rowH;
+      const y = dateH + bandsH + r * rowH;
       ctx.fillStyle = '#9aa8b8';
       ctx.fillText(row.label, 0, y + rowH / 2);
       for (let i = 0; i < n; i++) {
@@ -539,7 +572,9 @@
       btn.textContent = `${formatTime(localIso(w.start))}〜${formatTime(localIso(w.end), false)}`;
       const small = document.createElement('small');
       small.textContent = `平均雲量 ${Math.round(w.avgCloud)}%`;
-      li.append(btn, small);
+      const moon = document.createElement('small');
+      moon.textContent = moonLabel(w);
+      li.append(btn, small, moon);
       return li;
     }));
   }

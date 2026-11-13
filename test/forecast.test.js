@@ -118,6 +118,52 @@ test('暗い時間帯は範囲の端で切り、白夜では空、極夜では�
   assert.deepEqual(F.intervalsBelow(sunAt({ lat: 89, lon: 0 }), decFrom, decTo, -18), [{ start: decFrom, end: decTo }]);
 });
 
+// 国立天文台 暦計算室「月の出入り@東京」の2026年11月の値。[日付, 月の出, 月の入り](その日にないものは null)
+const NAOJ_TOKYO_MOON = [
+  ['2026-11-01', '22:30', '12:15'],
+  ['2026-11-03', null, '13:24'],
+  ['2026-11-10', '07:04', '16:48'],
+  ['2026-11-17', '12:15', '23:10'],
+  ['2026-11-18', '12:42', null],
+  ['2026-11-24', '15:49', '05:46'],
+  ['2026-11-30', '22:39', '11:26'],
+];
+
+test('月の出・月の入りの時刻は、国立天文台の値と3分以内で一致する', () => {
+  const f = (ms) => F.moonAltitude(ms, TOKYO.lat, TOKYO.lon);
+  for (const [date, rise, set] of NAOJ_TOKYO_MOON) {
+    const xs = F.findCrossings(f, jst(`${date}T00:00`), jst(`${date}T23:59`), -0.83);
+    const risings = xs.filter((x) => x.rising);
+    const settings = xs.filter((x) => !x.rising);
+    for (const [expected, found, label] of [[rise, risings, '月の出'], [set, settings, '月の入り']]) {
+      if (expected == null) { assert.equal(found.length, 0, `${date} ${label}`); continue; }
+      assert.equal(found.length, 1, `${date} ${label}`);
+      assert.ok(Math.abs(found[0].ms - jst(`${date}T${expected}`)) <= 3 * 60000, `${date} ${label}`);
+    }
+  }
+});
+
+test('月の輝面比は、新月で0に、上弦で半分に、満月で1に近い', () => {
+  // 2026年11月: 新月 9日、上弦 17日、満月 24日(国立天文台の月齢 0.8/7.8/14.8 の前後)
+  assert.ok(F.moonIllumination(jst('2026-11-09T12:00')) < 0.02);
+  assert.ok(Math.abs(F.moonIllumination(jst('2026-11-17T12:00')) - 0.5) < 0.1);
+  assert.ok(F.moonIllumination(jst('2026-11-24T12:00')) > 0.97);
+});
+
+test('月の条件は、時間帯の中で月が沈んでいる最も長い部分を返す', () => {
+  const w = { start: 1000 * 60000, end: 1600 * 60000 };
+  const min = (m) => m * 60000;
+  assert.deepEqual(F.moonCondition(w, [{ start: min(0), end: min(2000) }]), { kind: 'none' });
+  assert.deepEqual(F.moonCondition(w, []), { kind: 'up' });
+  assert.deepEqual(F.moonCondition(w, [{ start: min(1600), end: min(2000) }]), { kind: 'up' });
+  assert.deepEqual(F.moonCondition(w, [{ start: min(1240), end: min(2000) }]), { kind: 'partial', from: min(1240), to: null });
+  assert.deepEqual(F.moonCondition(w, [{ start: min(0), end: min(1135) }]), { kind: 'partial', from: null, to: min(1135) });
+  assert.deepEqual(
+    F.moonCondition(w, [{ start: min(0), end: min(1050) }, { start: min(1300), end: min(1400) }]),
+    { kind: 'partial', from: min(1300), to: min(1400) },
+  );
+});
+
 // 1時間ごとの時刻と、そのエポックミリ秒(JST)。
 const hours = (fromIso, n) => {
   const start = jst(fromIso);
