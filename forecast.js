@@ -9,15 +9,23 @@
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
   const wrapLon = (lon) => ((((lon + 180) % 360) + 360) % 360) - 180;
 
-  // 目的地を中心とした格子を、北西から南東へ行優先で返す。
+  // 目的地の周りの格子を、北西から南東へ行優先で返す。
   // 経度方向の幅は緯度で補正し、地図上でおおよそ正方形にする。
   // Open-Meteo は1地点ごとに API の利用回数を数えるため、点の数(size×size)を抑えている。
+  // 格子の中心は目的地そのものではなく、点の間隔の刻みにそろえる。近くで目的地を変えても
+  // 同じ格子になり、周辺の雲を取り直さずに済む。目的地は中心から最大で間隔の半分ずれる。
+  // key: 同じ格子かどうかを見分ける文字列。
   function buildGrid(lat, lon, size = 7, latRadius = 1.2) {
-    const lonRadius = latRadius / Math.max(Math.cos(lat * RAD), 0.2);
-    const north = clamp(lat + latRadius, -85, 85);
-    const south = clamp(lat - latRadius, -85, 85);
-    const west = lon - lonRadius;
-    const east = lon + lonRadius;
+    const latStep = (2 * latRadius) / (size - 1);
+    const cLat = clamp(Math.round(lat / latStep) * latStep, -85, 85);
+    const lonScale = 1 / Math.max(Math.cos(cLat * RAD), 0.2);
+    const lonStep = latStep * lonScale;
+    const cLon = Math.round(lon / lonStep) * lonStep;
+    const lonRadius = latRadius * lonScale;
+    const north = clamp(cLat + latRadius, -85, 85);
+    const south = clamp(cLat - latRadius, -85, 85);
+    const west = cLon - lonRadius;
+    const east = cLon + lonRadius;
     const points = [];
     for (let row = 0; row < size; row++) {
       const pLat = north + ((south - north) * row) / (size - 1);
@@ -26,7 +34,9 @@
         points.push({ lat: +pLat.toFixed(4), lon: +wrapLon(pLon).toFixed(4) });
       }
     }
-    return { size, points, bounds: [[south, west], [north, east]] };
+    // 経度は折り返さずに使う。bounds は目的地の側に置くため、日付変更線の反対側の格子とは分ける。
+    const key = `${size},${latRadius},${cLat.toFixed(4)},${cLon.toFixed(4)}`;
+    return { size, points, bounds: [[south, west], [north, east]], key };
   }
 
   // 1時間ごとの値を線形補間する。片方が欠測なら、もう片方を使う。

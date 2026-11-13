@@ -3,23 +3,46 @@ const assert = require('node:assert/strict');
 require('../forecast.js');
 const F = globalThis.Forecast;
 
-test('格子は北西から南東へ並び、中心が目的地になる', () => {
+test('格子は北西から南東へ並ぶ', () => {
   const g = F.buildGrid(36, 138, 9, 1);
   assert.equal(g.points.length, 81);
   assert.equal(g.points[0].lat, 37);
-  assert.ok(g.points[0].lon < 138);
-  assert.deepEqual(g.points[40], { lat: 36, lon: 138 });
+  assert.ok(g.points[0].lon < g.points[8].lon);
+  assert.equal(g.points[40].lat, 36);
   assert.equal(g.points[80].lat, 35);
-  assert.ok(g.points[80].lon > 138);
+  assert.ok(g.points[80].lon > g.points[72].lon);
 });
 
 test('既定の格子は7×7で、南北 ±1.2° の範囲を約0.4°間隔で覆う', () => {
   const g = F.buildGrid(36, 138);
   assert.equal(g.size, 7);
   assert.equal(g.points.length, 49);
-  assert.deepEqual(g.points[24], { lat: 36, lon: 138 });
+  assert.equal(g.points[24].lat, 36);
   assert.equal(g.points[0].lat, 37.2);
   assert.ok(Math.abs(g.points[7].lat - 36.8) < 1e-9);
+});
+
+test('格子の中心は刻みにそろい、目的地は中心から間隔の半分以内にある', () => {
+  for (const [lat, lon] of [[35.953, 138.473], [33.93, 132.74], [43.06, 141.35], [-33.87, 151.21], [64.1, -21.9]]) {
+    const g = F.buildGrid(lat, lon);
+    const [[south, west], [north, east]] = g.bounds;
+    const latStep = (north - south) / 6;
+    const lonStep = (east - west) / 6;
+    assert.ok(Math.abs((south + north) / 2 - lat) <= latStep / 2 + 1e-9);
+    assert.ok(Math.abs((west + east) / 2 - lon) <= lonStep / 2 + 1e-9);
+  }
+});
+
+test('近くの目的地は同じ格子を使い、離れると別の格子になる', () => {
+  const a = F.buildGrid(35.95, 138.47);
+  const b = F.buildGrid(35.97, 138.52);
+  assert.equal(a.key, b.key);
+  assert.deepEqual(a.points, b.points);
+  assert.notEqual(F.buildGrid(36.5, 138.47).key, a.key);
+});
+
+test('日付変更線の両側の格子は別の格子として扱う', () => {
+  assert.notEqual(F.buildGrid(0, 179.9).key, F.buildGrid(0, -179.9).key);
 });
 
 test('日付変更線をまたぐ格子は経度が折り返される', () => {
