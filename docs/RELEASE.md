@@ -1,10 +1,10 @@
 # リリース手順
 
-Sky Window の配信と、版の番号の付け方をまとめます。
+FineStella の配信と、版の番号の付け方をまとめます。
 
 ## 配信のしくみ
 
-`main` にマージすると、GitHub Actions([.github/workflows/pages.yml](../.github/workflows/pages.yml))が次の順に動き、数分で https://skywindow.netplan.jp/ に反映されます。
+`main` にマージすると、GitHub Actions([.github/workflows/pages.yml](../.github/workflows/pages.yml))が次の順に動き、数分で https://finestella.com/ に反映されます。
 
 1. テストを実行する。失敗したら配信しない
 2. 配信するファイル(`index.html`、JS と CSS、`favicon.ico`、`manifest.webmanifest`、`assets/`)をそろえる。ファイルを増やしたときは、pages.yml のコピーの対象にも足す(漏れているとテストが失敗する)
@@ -33,7 +33,7 @@ ID は配信のたびに自動で変わるので、手で更新する必要は�
 | `MINOR`(0.**1**.0 → 0.**2**.0) | 機能の追加、見た目の大きな変更 | 予報を7日間にする |
 | `PATCH`(0.1.**0** → 0.1.**1**) | 不具合の修正、文言の修正 | 表示の崩れを直す |
 
-番号の正本は [CHANGELOG.md](../CHANGELOG.md) の最新の版です。ほかに書くのは、[index.html](../index.html) のフッターの `Sky Window v…` の1か所だけです。食い違うとテストが失敗します。
+番号の正本は [CHANGELOG.md](../CHANGELOG.md) の最新の版です。ほかに書くのは、[index.html](../index.html) のフッターの `FineStella v…` の1か所だけです。食い違うとテストが失敗します。
 
 ## 日々の変更
 
@@ -59,10 +59,10 @@ PR を作るときは、利用者に関わる変更を [CHANGELOG.md](../CHANGEL
    - `## [Unreleased]` は空のまま残す
    - 末尾のリンクを更新する
      ```
-     [Unreleased]: https://github.com/kazweda/sky-window/compare/v0.x.y...HEAD
-     [0.x.y]: https://github.com/kazweda/sky-window/releases/tag/v0.x.y
+     [Unreleased]: https://github.com/kazweda/finestella/compare/v0.x.y...HEAD
+     [0.x.y]: https://github.com/kazweda/finestella/releases/tag/v0.x.y
      ```
-3. **フッターの番号を変える**:`index.html` の `Sky Window v旧番号` を `Sky Window v0.x.y` にする
+3. **フッターの番号を変える**:`index.html` の `FineStella v旧番号` を `FineStella v0.x.y` にする
 4. **テストを実行する**
    ```sh
    node --test
@@ -78,4 +78,4 @@ PR を作るときは、利用者に関わる変更を [CHANGELOG.md](../CHANGEL
    ```sh
    gh release create v0.x.y --title v0.x.y --notes-file <該当する版の内容を書いたファイル>
    ```
-8. **公開サイトで確かめる**:配信が終わったら https://skywindow.netplan.jp/ を開き、フッターに新しい番号が出ていること、地図・検索・予報が動くことを確かめる
+8. **公開サイトで確かめる**:配信が終わったら https://finestella.com/ を開き、フッターに新しい番号が出ていること、地図・検索・予報が動くことを確かめる

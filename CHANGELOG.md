@@ -1,12 +1,17 @@
 # 更新履歴
 
-Sky Window の利用者に関わる変更を記録します。書き方は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に沿い、バージョン番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従います。
+FineStella(旧名 Sky Window)の利用者に関わる変更を記録します。書き方は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に沿い、バージョン番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従います。
 
 ## [Unreleased]
 
 ### 追加
 
 - 訪問数・国・流入元を知るために、Cloudflare Web Analytics による匿名のアクセス計測を入れました。Cookie は使いません。URL に入る地点(緯度・経度・地名)は記録されません。
+
+### 変更
+
+- 名前を Sky Window から FineStella に変え、URL を https://finestella.com/ に移しました。旧 URL(https://skywindow.netplan.jp/)を開くと、地点や地名の指定を保ったまま新しい URL に転送されます。
+- URL が変わったため、旧 URL で保存した初期位置は引き継がれません。お手数ですが、新しい URL で「初期位置にする」をもう一度押してください。
 
 ## [0.4.0] - 2026-11-13
 
@@ -69,8 +74,8 @@ Sky Window の利用者に関わる変更を記録します。書き方は [Keep
 - Buy Me a Coffee へのリンクを置きました。
 - 画面の下部に、版の番号と更新履歴へのリンクを表示しました。
 
-[Unreleased]: https://github.com/kazweda/sky-window/compare/v0.4.0...HEAD
-[0.4.0]: https://github.com/kazweda/sky-window/releases/tag/v0.4.0
-[0.3.0]: https://github.com/kazweda/sky-window/releases/tag/v0.3.0
-[0.2.0]: https://github.com/kazweda/sky-window/releases/tag/v0.2.0
-[0.1.0]: https://github.com/kazweda/sky-window/releases/tag/v0.1.0
+[Unreleased]: https://github.com/kazweda/finestella/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kazweda/finestella/releases/tag/v0.4.0
+[0.3.0]: https://github.com/kazweda/finestella/releases/tag/v0.3.0
+[0.2.0]: https://github.com/kazweda/finestella/releases/tag/v0.2.0
+[0.1.0]: https://github.com/kazweda/finestella/releases/tag/v0.1.0

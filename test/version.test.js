@@ -25,5 +25,5 @@ test('自前の JS と CSS は、すべて ?v=__BUILD__ 付きで読み込む', 
 });
 
 test('フッターに最新の版の番号を表示する', () => {
-  assert.match(html, new RegExp(`<p class="version">Sky Window v${latest.replace(/\./g, '\\.')} `));
+  assert.match(html, new RegExp(`<p class="version">FineStella v${latest.replace(/\./g, '\\.')} `));
 });
