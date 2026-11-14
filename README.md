@@ -1,15 +1,18 @@
-# Sky Window
+# FineStella
 
 目的地と時刻を選び、その地点の雲の量と動きを確認する天体観測向けの試作です。
 
-**公開 URL:** https://skywindow.netplan.jp/
+**公開 URL:** https://finestella.com/
+
+旧名は Sky Window です(2026-11 に改名)。旧 URL の https://skywindow.netplan.jp/ は、新しい URL に転送しています。
 
 ## 名前の由来
 
-「Sky Window」には2つの意味を込めています。
+「FineStella」には3つの意味を込めています。
 
-- **空の窓**:目的地の上空をのぞく窓
-- **晴れ間**:英語では、天候が条件を満たす限られた時間を「weather window」と呼びます。天体観測で晴れて観測できる時間帯、つまりこのアプリが示す「観測のねらい目」のことです
+- **Fine**:晴れた、綺麗な(英語)
+- **Stella**:星(ラテン語・イタリア語)
+- **Finestra** との響き:イタリア語の「窓」。旧名 Sky Window の「目的地の上空をのぞく窓」を受け継いでいます
 
 ## できること
 
@@ -72,7 +75,7 @@ PR では GitHub Actions でも同じテストを実行します。main にマ�
 
 ## 開発の支援
 
-If you like Sky Window, you can support my work here!
+If you like FineStella, you can support my work here!
 
 ☕ [Buy me a coffee](https://buymeacoffee.com/netplan)
 

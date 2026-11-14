@@ -1,6 +1,6 @@
 {
-  "name": "Sky Window",
-  "short_name": "Sky Window",
+  "name": "FineStella",
+  "short_name": "FineStella",
   "description": "目的地の雲の量と動きを確かめる、天体観測向けのウェブアプリ",
   "lang": "ja",
   "start_url": "/",

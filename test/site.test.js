@@ -42,6 +42,6 @@ test('robots.txt があり、配信でコピーされる', () => {
 
 test('共有のプレビュー画像は絶対 URL で、公開サイトの配信先を指す', () => {
   const image = (html.match(/<meta property="og:image" content="([^"]+)"/) || [])[1];
-  assert.equal(image, 'https://skywindow.netplan.jp/assets/og-image.png');
+  assert.equal(image, 'https://finestella.com/assets/og-image.png');
   assert.ok(fs.existsSync(path.join(root, 'assets/og-image.png')));
 });

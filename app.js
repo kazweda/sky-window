@@ -775,7 +775,7 @@
   // --- 初期位置 ---
   // 何も付けずに開いたときの地点を、このブラウザに保存する。
   // 保存できない環境(プライベートブラウズなど)では、ボタンを出さず野辺山で開く。
-  const HOME_KEY = 'sky-window:home';
+  const HOME_KEY = 'finestella:home';
   const storage = (() => {
     try {
       const s = window.localStorage;

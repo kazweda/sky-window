@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Sky Window:夜空をのぞく窓。背景はアプリの配色(#0b1018)に合わせる -->
+  <!-- FineStella:夜空をのぞく窓(イタリア語の finestra)。背景はアプリの配色(#0b1018)に合わせる -->
   <rect width="64" height="64" rx="14" fill="#0b1018"/>
   <!-- 小さく表示しても窓がわかるよう、中身を少し拡大する -->
   <g transform="translate(32 32) scale(1.18) translate(-32 -32)">
